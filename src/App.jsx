@@ -79,6 +79,7 @@ async function loadProductsFromSheets() {
       name: row["Product Name"],
       description: row["Product Description"],
       unit_price: priceStringToFloat(row["Our Price"]),
+      unit_cost: priceStringToFloat(row["Cost"]),
     };
   });
 
@@ -92,6 +93,7 @@ async function loadProductsFromSheets() {
       name: row["Add-on Name"],
       description: row["Add-on Description"],
       unit_price: priceStringToFloat(row["Our Price"]),
+      unit_cost: priceStringToFloat(row["Cost"]),
       parent_skus:
         row["Compatible Parent SKUs"]?.replace(/\s+/g, "").split(",") || [],
       incompatible_skus:
@@ -157,7 +159,7 @@ function Header() {
             Camo CPQ
           </h1>
           <div className="text-xs sm:text-sm">
-            Demo • Source: <a className="text-blue-600 hover:text-blue-800 underline" href="https://docs.google.com/spreadsheets/d/14zzAWJNgDxZgXAm713sq3K8fhWDNJPZ49SGYssBQH00/edit" target="_blank">Camo CPQ Products</a>
+            Demo • Source: <a className="text-[#56B0CB] hover:text-[#3d8fa8] underline" href="https://docs.google.com/spreadsheets/d/14zzAWJNgDxZgXAm713sq3K8fhWDNJPZ49SGYssBQH00/edit" target="_blank">Camo CPQ Products</a>
           </div>
         </div>
       </header>
@@ -179,8 +181,8 @@ function OptionCard({
       onClick={onSelect}
       disabled={disabled}
       className={classNames(
-        "w-full text-left rounded-2xl border border-gray-200 p-4 shadow-sm transition-shadow bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed",
-        selected && "ring-2 ring-blue-500",
+        "w-full text-left rounded-2xl border border-gray-200 p-4 shadow-sm transition-shadow bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#56B0CB] disabled:opacity-50 disabled:cursor-not-allowed",
+        selected && "ring-2 ring-[#56B0CB]",
         disabled && "opacity-50 cursor-not-allowed",
       )}
     >
@@ -189,7 +191,7 @@ function OptionCard({
           className={classNames(
             "mt-1 h-4 w-4 flex-none rounded-full border",
             selected
-              ? "bg-blue-500 border-blue-500"
+              ? "bg-[#56B0CB] border-[#56B0CB]"
               : "bg-white border-gray-300",
           )}
         />
@@ -225,8 +227,8 @@ function CheckboxCard({
       onClick={onToggle}
       disabled={disabled}
       className={classNames(
-        "w-full text-left rounded-2xl border border-gray-200 p-4 shadow-sm transition-shadow bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed",
-        checked && "ring-2 ring-blue-500",
+        "w-full text-left rounded-2xl border border-gray-200 p-4 shadow-sm transition-shadow bg-white hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#56B0CB] disabled:opacity-50 disabled:cursor-not-allowed",
+        checked && "ring-2 ring-[#56B0CB]",
         disabled && "opacity-50 cursor-not-allowed",
       )}
     >
@@ -236,7 +238,7 @@ function CheckboxCard({
           className={classNames(
             "mt-1 h-4 w-4 flex-none rounded-sm border flex items-center justify-center",
             checked
-              ? "bg-blue-500 border-blue-500"
+              ? "bg-[#56B0CB] border-[#56B0CB]"
               : "bg-white border-gray-300",
           )}
         >
@@ -276,32 +278,206 @@ function CheckboxCard({
   );
 }
 
-function Summary({ product, addons }) {
-  const total =
-    Number(product?.unit_price || 0) +
-    addons.reduce((s, a) => s + Number(a.unit_price || 0), 0);
+function Summary({
+  product,
+  addons,
+  discountType,
+  setDiscountType,
+  discountValue,
+  setDiscountValue,
+  quoteLink,
+  dealLink,
+  quoteLoading,
+  onPushToHubspot,
+}) {
+  const [marginHeld, setMarginHeld] = useState(false);
+
+  useEffect(() => {
+    if (marginHeld) {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
+      });
+    }
+  }, [marginHeld]);
+
+  const lineItems = [
+    ...(product
+      ? [{ name: product.name, description: product.description, price: product.unit_price, cost: product.unit_cost, sku: product.sku }]
+      : []),
+    ...addons.map((a) => ({ name: a.name, description: a.description, price: a.unit_price, cost: a.unit_cost, sku: a.sku, addon: true })),
+  ];
+
+  const subtotal = lineItems.reduce((s, item) => s + Number(item.price || 0), 0);
+  const cost = lineItems.reduce((s, item) => s + Number(item.cost || 0), 0);
+  // products taxed on cost, addons taxed on price; discount doesn't affect tax
+  const tax =
+    cost * 0.1 +
+    addons.reduce((s, a) => s + Number(a.unit_price || 0) * 0.1, 0);
+  const rawDiscount = Number(discountValue || 0);
+  const discountAmount =
+    discountType === "$"
+      ? Math.min(rawDiscount, subtotal)
+      : subtotal * (Math.min(rawDiscount, 100) / 100);
+  const totalBeforeTax = subtotal - discountAmount;
+  const total = totalBeforeTax + tax;
+  const marginPct =
+    totalBeforeTax !== 0
+      ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100
+      : 0;
+
   return (
-    <div className="w-full bg-white border-gray-200">
-      <div className="mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-        <div className="text-sm text-gray-500">
-          <span className="font-medium text-gray-700">Summary:</span>
-          {product ? (
-            <>
-              <span className="ml-2">{product.name}</span>
-              {addons.length > 0 && (
-                <span className="ml-2">
-                  • {addons.length} add-on{addons.length > 1 ? "s" : ""}
-                </span>
-              )}
-            </>
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+      <h2 className="text-lg font-semibold mb-4">Quote Summary</h2>
+
+      {lineItems.length === 0 ? (
+        <p className="text-sm text-gray-500">No items selected yet.</p>
+      ) : (
+        <div className="space-y-4 mb-4">
+          {lineItems.map((item) => (
+            <div key={item.sku} className={classNames("flex items-start justify-between gap-4", item.addon && "pl-4 border-l-2 border-gray-100")}>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-900">{item.name}</div>
+                {item.description && (
+                  <div className="text-sm text-gray-500 mt-0.5">{item.description}</div>
+                )}
+              </div>
+              <div className="text-right whitespace-nowrap">
+                <div className="font-semibold text-gray-900">{currency.format(Number(item.price || 0))}</div>
+                {marginHeld && item.cost > 0 && (
+                  <div className="text-xs text-gray-400 mt-0.5">Cost: {currency.format(item.cost)}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="border-t border-gray-100 pt-4 space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Subtotal</span>
+          <span className="font-medium">{currency.format(subtotal)}</span>
+        </div>
+        {marginHeld && (
+          <div className="flex justify-between text-sm text-gray-400">
+            <span>Cost</span>
+            <span>{currency.format(cost)}</span>
+          </div>
+        )}
+
+        {/* Discount row */}
+        <div className="flex items-center justify-between gap-4 py-1">
+          <span className="text-sm text-gray-600">Discount</span>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setDiscountType("$")}
+                className={classNames(
+                  "px-2.5 py-1.5 transition-colors",
+                  discountType === "$"
+                    ? "bg-[#56B0CB] text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50",
+                )}
+              >
+                $
+              </button>
+              <button
+                type="button"
+                onClick={() => setDiscountType("%")}
+                className={classNames(
+                  "px-2.5 py-1.5 transition-colors",
+                  discountType === "%"
+                    ? "bg-[#56B0CB] text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50",
+                )}
+              >
+                %
+              </button>
+            </div>
+            <input
+              type="number"
+              min="0"
+              step={discountType === "%" ? "1" : "50"}
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              className="w-24 text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#56B0CB]"
+              placeholder="0"
+            />
+          </div>
+        </div>
+        {discountAmount > 0 && (
+          <div className="flex justify-between text-sm text-green-600">
+            <span>Discount applied</span>
+            <span>-{currency.format(discountAmount)}</span>
+          </div>
+        )}
+        {marginHeld && (
+          <div className="flex justify-between text-sm text-gray-400">
+            <span>Total before tax</span>
+            <span>{currency.format(totalBeforeTax)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Tax</span>
+          <span className="font-medium">{currency.format(tax)}</span>
+        </div>
+
+        <div className="flex justify-between font-semibold text-base border-t border-gray-100 pt-3 mt-1">
+          <span>Total</span>
+          <span>{currency.format(total)}</span>
+        </div>
+        {marginHeld && (
+          <div className="flex justify-between text-sm font-medium text-gray-700 pt-1">
+            <span>Margin</span>
+            <span>{marginPct.toFixed(1)}%</span>
+          </div>
+        )}
+      </div>
+
+      {/* Action buttons — left group / right */}
+      <div className="flex items-center justify-between mt-6">
+        {/* Left group: Push to HubSpot → View HubSpot Deal, then View Quote right beside it */}
+        <div className="flex items-center gap-2">
+          {dealLink ? (
+            <a
+              href={dealLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block px-4 py-2 rounded-xl bg-[#56B0CB] hover:bg-[#4a9ab8] text-white text-sm font-medium transition-colors"
+            >
+              View HubSpot Deal
+            </a>
           ) : (
-            <span className="ml-2">No product selected</span>
+            <button
+              type="button"
+              disabled={!product || quoteLoading}
+              onClick={onPushToHubspot}
+              className="px-4 py-2 rounded-xl bg-[#56B0CB] hover:bg-[#4a9ab8] text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {quoteLoading ? "Sending…" : "Push to HubSpot"}
+            </button>
+          )}
+          {quoteLink && (
+            <a
+              href={quoteLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block px-4 py-2 rounded-xl bg-[#DDB244] hover:bg-[#c9a33e] text-white text-sm font-medium transition-colors"
+            >
+              View Quote
+            </a>
           )}
         </div>
-        <div className="text-right">
-          <div className="text-lg font-semibold">
-            Total {currency.format(total)}
-          </div>
+
+        {/* Right: View Margin — toggle */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setMarginHeld((v) => !v)}
+            className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium transition-colors"
+          >
+            {marginHeld ? "Hide Margin" : "View the Margin"}
+          </button>
         </div>
       </div>
     </div>
@@ -314,7 +490,7 @@ function AccordionSection({ title, count, isOpen, onToggle, children }) {
       <button
         type="button"
         onClick={onToggle}
-        className="w-full rounded-2xl overflow-hidden border border-gray-200 hover:shadow-md overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100"
+        className="w-full rounded-2xl overflow-hidden border border-gray-200 hover:shadow-md overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#56B0CB] flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100"
       >
         <span className="text-sm font-medium text-gray-900">{title}</span>
         <div className="flex items-center gap-3">
@@ -353,8 +529,13 @@ export default function App() {
   } = useProducts();
   const [productSku, setProductSku] = useState(null);
   const [addonSkus, setAddonSkus] = useState(new Set());
-  const [openProductCat, setOpenProductCat] = useState(null); // product accordion
-  const [openAddonCat, setOpenAddonCat] = useState(null); // addon accordion
+  const [openProductCat, setOpenProductCat] = useState(null);
+  const [openAddonCat, setOpenAddonCat] = useState(null);
+  const [discountType, setDiscountType] = useState("$");
+  const [discountValue, setDiscountValue] = useState("");
+  const [quoteLink, setQuoteLink] = useState(null);
+  const [dealLink, setDealLink] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   const selectedProduct = useMemo(
     () => products.find((p) => p.sku === productSku) || null,
@@ -404,6 +585,44 @@ export default function App() {
     () => addons.filter((a) => addonSkus.has(a.sku)),
     [addons, addonSkus],
   );
+
+  const handlePushToHubspot = async () => {
+    if (!selectedProduct) return;
+
+    const lineItems = [
+      { name: selectedProduct.name, description: selectedProduct.description, price: selectedProduct.unit_price, sku: selectedProduct.sku },
+      ...selectedAddons.map((a) => ({ name: a.name, description: a.description, price: a.unit_price, sku: a.sku })),
+    ];
+    const subtotal = lineItems.reduce((s, i) => s + i.price, 0);
+    const cost = selectedProduct.unit_cost || 0;
+    const tax =
+      cost * 0.1 +
+      selectedAddons.reduce((s, a) => s + a.unit_price * 0.1, 0);
+    const rawDiscount = Number(discountValue || 0);
+    const discountAmount =
+      discountType === "$"
+        ? Math.min(rawDiscount, subtotal)
+        : subtotal * (Math.min(rawDiscount, 100) / 100);
+    const total = subtotal - discountAmount + tax;
+
+    setQuoteLoading(true);
+    setQuoteLink(null);
+    setDealLink(null);
+    try {
+      const res = await fetch("https://n8n.californiamobility.com/webhook/camocpq-demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ line_items: lineItems, subtotal, tax, discount: discountAmount, total }),
+      });
+      const data = await res.json();
+      if (data.quote_link) setQuoteLink(data.quote_link);
+      if (data.deal_link) setDealLink(data.deal_link);
+    } catch (e) {
+      console.error("HubSpot push failed:", e);
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -540,15 +759,22 @@ export default function App() {
             </section>
           </div>
         )}
-      </main>
 
-      <div className="sticky bottom-0 z-30 p-4">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
-          <div className="p-1 border-gray-100">
-            <Summary product={selectedProduct} addons={selectedAddons} />
-          </div>
-        </div>
-      </div>
+        {!loading && !error && (
+          <Summary
+            product={selectedProduct}
+            addons={selectedAddons}
+            discountType={discountType}
+            setDiscountType={setDiscountType}
+            discountValue={discountValue}
+            setDiscountValue={setDiscountValue}
+            quoteLink={quoteLink}
+            dealLink={dealLink}
+            quoteLoading={quoteLoading}
+            onPushToHubspot={handlePushToHubspot}
+          />
+        )}
+      </main>
     </div>
   );
 }
