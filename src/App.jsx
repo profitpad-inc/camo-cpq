@@ -327,46 +327,59 @@ function Summary({
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-      <h2 className="text-lg font-semibold mb-4">Quote Summary</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">Quote Summary</h2>
+        {marginHeld && (
+          <span className="text-sm font-semibold text-gray-700">Margin: {marginPct.toFixed(1)}%</span>
+        )}
+      </div>
 
       {lineItems.length === 0 ? (
         <p className="text-sm text-gray-500">No items selected yet.</p>
       ) : (
-        <div className="space-y-4 mb-4">
-          {lineItems.map((item) => (
-            <div key={item.sku} className={classNames("flex items-start justify-between gap-4", item.addon && "pl-4 border-l-2 border-gray-100")}>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-gray-900">{item.name}</div>
-                {item.description && (
-                  <div className="text-sm text-gray-500 mt-0.5">{item.description}</div>
+        <div className="mb-4">
+          {/* Column headers */}
+          <div className="flex items-center gap-4 mb-2 pb-2 border-b border-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <div className="flex-1">Item</div>
+            {marginHeld && <div className="w-28 text-right">Cost</div>}
+            <div className="w-28 text-right">Price</div>
+          </div>
+          {/* Rows */}
+          <div className="space-y-3">
+            {lineItems.map((item) => (
+              <div key={item.sku} className={classNames("flex items-start gap-4", item.addon && "pl-4 border-l-2 border-gray-100")}>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900">{item.name}</div>
+                  {item.description && (
+                    <div className="text-sm text-gray-500 mt-0.5">{item.description}</div>
+                  )}
+                </div>
+                {marginHeld && (
+                  <div className="w-28 text-right whitespace-nowrap text-sm text-gray-500">
+                    {item.cost > 0 ? currency.format(item.cost) : "—"}
+                  </div>
                 )}
+                <div className="w-28 text-right whitespace-nowrap">
+                  <div className="font-semibold text-gray-900">{currency.format(Number(item.price || 0))}</div>
+                </div>
               </div>
-              <div className="text-right whitespace-nowrap">
-                <div className="font-semibold text-gray-900">{currency.format(Number(item.price || 0))}</div>
-                {marginHeld && item.cost > 0 && (
-                  <div className="text-xs text-gray-400 mt-0.5">Cost: {currency.format(item.cost)}</div>
-                )}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
       <div className="border-t border-gray-100 pt-4 space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Subtotal</span>
-          <span className="font-medium">{currency.format(subtotal)}</span>
+        {/* Subtotal */}
+        <div className="flex items-center gap-4 text-sm">
+          <span className="flex-1 text-gray-600">Subtotal</span>
+          {marginHeld && <span className="w-28 text-right text-gray-500">{currency.format(cost)}</span>}
+          <span className="w-28 text-right font-medium">{currency.format(subtotal)}</span>
         </div>
-        {marginHeld && (
-          <div className="flex justify-between text-sm text-gray-400">
-            <span>Cost</span>
-            <span>{currency.format(cost)}</span>
-          </div>
-        )}
 
         {/* Discount row */}
-        <div className="flex items-center justify-between gap-4 py-1">
-          <span className="text-sm text-gray-600">Discount</span>
+        <div className="flex items-center gap-4 py-1">
+          <span className="flex-1 text-sm text-gray-600">Discount</span>
+          <div className={classNames("flex items-center gap-2", marginHeld && "w-28")} />
           <div className="flex items-center gap-2">
             <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
               <button
@@ -406,32 +419,27 @@ function Summary({
           </div>
         </div>
         {discountAmount > 0 && (
-          <div className="flex justify-between text-sm text-green-600">
-            <span>Discount applied</span>
-            <span>-{currency.format(discountAmount)}</span>
+          <div className="flex items-center gap-4 text-sm text-green-600">
+            <span className="flex-1">Discount applied</span>
+            {marginHeld && <span className="w-28" />}
+            <span className="w-28 text-right">-{currency.format(discountAmount)}</span>
           </div>
         )}
-        {marginHeld && (
-          <div className="flex justify-between text-sm text-gray-400">
-            <span>Total before tax</span>
-            <span>{currency.format(totalBeforeTax)}</span>
-          </div>
-        )}
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Tax</span>
-          <span className="font-medium">{currency.format(tax)}</span>
+
+        {/* Tax */}
+        <div className="flex items-center gap-4 text-sm">
+          <span className="flex-1 text-gray-600">Tax</span>
+          {marginHeld && <span className="w-28" />}
+          <span className="w-28 text-right font-medium">{currency.format(tax)}</span>
         </div>
 
-        <div className="flex justify-between font-semibold text-base border-t border-gray-100 pt-3 mt-1">
-          <span>Total</span>
-          <span>{currency.format(total)}</span>
+        {/* Total */}
+        <div className="flex items-center gap-4 font-semibold text-base border-t border-gray-100 pt-3 mt-1">
+          <span className="flex-1">Total</span>
+          {marginHeld && <span className="w-28" />}
+          <span className="w-28 text-right">{currency.format(total)}</span>
         </div>
-        {marginHeld && (
-          <div className="flex justify-between text-sm font-medium text-gray-700 pt-1">
-            <span>Margin</span>
-            <span>{marginPct.toFixed(1)}%</span>
-          </div>
-        )}
+
       </div>
 
       {/* Action buttons — left group / right */}
@@ -476,7 +484,7 @@ function Summary({
             onClick={() => setMarginHeld((v) => !v)}
             className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium transition-colors"
           >
-            {marginHeld ? "Hide Margin" : "View the Margin"}
+            {marginHeld ? "Hide Margin" : "Show Margin"}
           </button>
         </div>
       </div>
