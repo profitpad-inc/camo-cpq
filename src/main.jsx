@@ -11,7 +11,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/service-worker.js')
+      .register('/camo-cpq/service-worker.js')
       .catch((err) => console.error('SW registration failed:', err));
   });
 }
