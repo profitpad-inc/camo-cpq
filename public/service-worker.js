@@ -5,9 +5,9 @@ const CACHE_NAME = "cpq-cache-v4";
 // Keeping external URLs out of PRECACHE_URLS prevents a single fetch failure
 // from aborting the entire SW install (cache.addAll is all-or-nothing).
 const PRECACHE_URLS = [
-  "/",
-  "/index.html",
-  "/favicon-32x32.png",
+  "/camo-cpq/",
+  "/camo-cpq/index.html",
+  "/camo-cpq/favicon-32x32.png",
 ];
 
 // Install: pre-cache app shell
@@ -51,7 +51,7 @@ self.addEventListener("fetch", (event) => {
         if (cached) return cached;
 
         if (request.mode === "navigate") {
-          return caches.match("/index.html");
+          return caches.match("/camo-cpq/index.html");
         }
         return Response.error();
       }
