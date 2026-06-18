@@ -1,5 +1,5 @@
 // public/service-worker.js
-const CACHE_NAME = "cpq-cache-v4";
+const CACHE_NAME = "cpq-cache-v5";
 
 // Only pre-cache the app shell — sheets data is cached at runtime on first load.
 // Keeping external URLs out of PRECACHE_URLS prevents a single fetch failure
