@@ -1,16 +1,16 @@
 // public/service-worker.js
-const CACHE_NAME = "cpq-cache-v3";
+const CACHE_NAME = "cpq-cache-v4";
 
+// Only pre-cache the app shell — sheets data is cached at runtime on first load.
+// Keeping external URLs out of PRECACHE_URLS prevents a single fetch failure
+// from aborting the entire SW install (cache.addAll is all-or-nothing).
 const PRECACHE_URLS = [
-  "/",              // SPA shell
+  "/",
   "/index.html",
   "/favicon-32x32.png",
-  "https://docs.google.com/spreadsheets/d/14zzAWJNgDxZgXAm713sq3K8fhWDNJPZ49SGYssBQH00/gviz/tq?tqx=out:csv&gid=512714440",
-  "https://docs.google.com/spreadsheets/d/14zzAWJNgDxZgXAm713sq3K8fhWDNJPZ49SGYssBQH00/gviz/tq?tqx=out:csv&gid=1610198502",
-  "https://docs.google.com/spreadsheets/d/14zzAWJNgDxZgXAm713sq3K8fhWDNJPZ49SGYssBQH00/gviz/tq?tqx=out:csv&gid=1688740072",
 ];
 
-// Install: pre-cache stable assets
+// Install: pre-cache app shell
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -31,45 +31,28 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Helper: same-origin?
-const isSameOrigin = (url) => {
-  try {
-    const u = new URL(url);
-    return u.origin === self.location.origin;
-  } catch { return false; }
-};
-
-// Fetch: network-first for same-origin GET, fallback to cache
+// Fetch: network-first, fall back to cache
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
-  // Only handle GET
   if (request.method !== "GET") return;
-
-  // Only handle same-origin (skip CDNs like unpkg/cdn.tailwindcss)
-//   if (!isSameOrigin(request.url)) return;
 
   event.respondWith(
     (async () => {
-      // Try network
       try {
         const networkResponse = await fetch(request);
-        // Runtime-update cache (cache only OK responses)
         if (networkResponse && networkResponse.status === 200) {
           const cache = await caches.open(CACHE_NAME);
           cache.put(request, networkResponse.clone());
         }
         return networkResponse;
       } catch {
-        // Network failed → try cache
         const cached = await caches.match(request);
         if (cached) return cached;
 
-        // If this was a navigation, fallback to index.html (SPA)
         if (request.mode === "navigate") {
           return caches.match("/index.html");
         }
-        // As a last resort, let it error
         return Response.error();
       }
     })()
