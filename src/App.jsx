@@ -754,9 +754,9 @@ export default function App() {
                   })}
 
                 {selectedProduct && selectedAddons.length > 0 && (
-                  <div className="sticky bottom-0 pt-2 z-30 flex justify-end mt-auto">
+                  <div className="sticky bottom-0 pt-2 z-30 flex justify-end mt-auto pointer-events-none">
                     <button
-                      className="sm:w-auto px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm"
+                      className="pointer-events-auto sm:w-auto px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm"
                       onClick={() => setAddonSkus(new Set())}
                     >
                       Clear add-ons
