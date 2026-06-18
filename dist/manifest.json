@@ -8,7 +8,7 @@
     "theme_color": "#56b0cb",
     "icons": [
         {
-            "src": "/favicon-32x32.png",
+            "src": "/camo-cpq/favicon-32x32.png",
             "sizes": "32x32",
             "type": "image/png"
         }
