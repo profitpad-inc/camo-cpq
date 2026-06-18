@@ -297,6 +297,18 @@ function Summary({
   onPushToHubspot,
 }) {
   const [marginHeld, setMarginHeld] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const up = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
+  }, []);
 
   useEffect(() => {
     if (marginHeld) {
@@ -463,7 +475,8 @@ function Summary({
           ) : (
             <button
               type="button"
-              disabled={!product || quoteLoading}
+              disabled={!product || quoteLoading || !isOnline}
+              title={!isOnline ? "No internet connection" : undefined}
               onClick={onPushToHubspot}
               className="px-3 py-2 sm:px-4 rounded-xl bg-[#56B0CB] hover:bg-[#4a9ab8] text-white text-xs sm:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
             >
