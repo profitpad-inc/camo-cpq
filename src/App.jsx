@@ -8,6 +8,12 @@ const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 });
+const currencyWhole = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
 
 // --- constants ---
 const sheetId = "14zzAWJNgDxZgXAm713sq3K8fhWDNJPZ49SGYssBQH00";
@@ -205,7 +211,7 @@ function OptionCard({
         </div>
         <div className="text-right">
           <div className="font-semibold">
-            {currency.format(Number(price || 0))}
+            {currencyWhole.format(Number(price || 0))}
           </div>
         </div>
       </div>
@@ -270,7 +276,7 @@ function CheckboxCard({
 
         <div className="text-right">
           <div className="font-semibold">
-            {currency.format(Number(price || 0))}
+            {currencyWhole.format(Number(price || 0))}
           </div>
         </div>
       </div>
@@ -326,7 +332,7 @@ function Summary({
       : 0;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Quote Summary</h2>
         {marginHeld && (
@@ -341,8 +347,8 @@ function Summary({
           {/* Column headers */}
           <div className="flex items-center gap-4 mb-2 pb-2 border-b border-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wide">
             <div className="flex-1">Item</div>
-            {marginHeld && <div className="w-28 text-right">Cost</div>}
-            <div className="w-28 text-right">Price</div>
+            {marginHeld && <div className="w-20 sm:w-28 text-right">Cost</div>}
+            <div className="w-20 sm:w-28 text-right">Price</div>
           </div>
           {/* Rows */}
           <div className="space-y-3">
@@ -355,12 +361,12 @@ function Summary({
                   )}
                 </div>
                 {marginHeld && (
-                  <div className="w-28 text-right whitespace-nowrap text-sm text-gray-500">
-                    {item.cost > 0 ? currency.format(item.cost) : "—"}
+                  <div className="w-20 sm:w-28 text-right whitespace-nowrap text-sm text-gray-500">
+                    {item.cost > 0 ? currencyWhole.format(item.cost) : "—"}
                   </div>
                 )}
-                <div className="w-28 text-right whitespace-nowrap">
-                  <div className="font-semibold text-gray-900">{currency.format(Number(item.price || 0))}</div>
+                <div className="w-20 sm:w-28 text-right whitespace-nowrap">
+                  <div className="font-semibold text-gray-900">{currencyWhole.format(Number(item.price || 0))}</div>
                 </div>
               </div>
             ))}
@@ -372,14 +378,14 @@ function Summary({
         {/* Subtotal */}
         <div className="flex items-center gap-4 text-sm">
           <span className="flex-1 text-gray-600">Subtotal</span>
-          {marginHeld && <span className="w-28 text-right text-gray-500">{currency.format(cost)}</span>}
-          <span className="w-28 text-right font-medium">{currency.format(subtotal)}</span>
+          {marginHeld && <span className="w-20 sm:w-28 text-right text-gray-500">{currencyWhole.format(cost)}</span>}
+          <span className="w-20 sm:w-28 text-right font-medium">{currencyWhole.format(subtotal)}</span>
         </div>
 
         {/* Discount row */}
         <div className="flex items-center gap-4 py-1">
           <span className="flex-1 text-sm text-gray-600">Discount</span>
-          <div className={classNames("flex items-center gap-2", marginHeld && "w-28")} />
+          <div className={classNames("flex items-center gap-2", marginHeld && "w-20 sm:w-28")} />
           <div className="flex items-center gap-2">
             <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
               <button
@@ -413,7 +419,7 @@ function Summary({
               step={discountType === "%" ? "1" : "50"}
               value={discountValue}
               onChange={(e) => setDiscountValue(e.target.value)}
-              className="w-24 text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#56B0CB]"
+              className="w-16 sm:w-24 text-right border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#56B0CB]"
               placeholder="0"
             />
           </div>
@@ -421,37 +427,36 @@ function Summary({
         {discountAmount > 0 && (
           <div className="flex items-center gap-4 text-sm text-green-600">
             <span className="flex-1">Discount applied</span>
-            {marginHeld && <span className="w-28" />}
-            <span className="w-28 text-right">-{currency.format(discountAmount)}</span>
+            {marginHeld && <span className="w-20 sm:w-28" />}
+            <span className="w-20 sm:w-28 text-right">-{currencyWhole.format(discountAmount)}</span>
           </div>
         )}
 
         {/* Tax */}
         <div className="flex items-center gap-4 text-sm">
           <span className="flex-1 text-gray-600">Tax</span>
-          {marginHeld && <span className="w-28" />}
-          <span className="w-28 text-right font-medium">{currency.format(tax)}</span>
+          {marginHeld && <span className="w-20 sm:w-28" />}
+          <span className="w-20 sm:w-28 text-right font-medium">{currency.format(tax)}</span>
         </div>
 
         {/* Total */}
         <div className="flex items-center gap-4 font-semibold text-base border-t border-gray-100 pt-3 mt-1">
           <span className="flex-1">Total</span>
-          {marginHeld && <span className="w-28" />}
-          <span className="w-28 text-right">{currency.format(total)}</span>
+          {marginHeld && <span className="w-20 sm:w-28" />}
+          <span className="w-20 sm:w-28 text-right">{currency.format(total)}</span>
         </div>
 
       </div>
 
-      {/* Action buttons — left group / right */}
-      <div className="flex items-center justify-between mt-6">
-        {/* Left group: Push to HubSpot → View HubSpot Deal, then View Quote right beside it */}
-        <div className="flex items-center gap-2">
+      {/* Action buttons */}
+      <div className="flex items-center justify-between mt-6 gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {dealLink ? (
             <a
               href={dealLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block px-4 py-2 rounded-xl bg-[#56B0CB] hover:bg-[#4a9ab8] text-white text-sm font-medium transition-colors"
+              className="inline-block px-3 py-2 sm:px-4 rounded-xl bg-[#56B0CB] hover:bg-[#4a9ab8] text-white text-xs sm:text-sm font-medium transition-colors whitespace-nowrap"
             >
               View HubSpot Deal
             </a>
@@ -460,7 +465,7 @@ function Summary({
               type="button"
               disabled={!product || quoteLoading}
               onClick={onPushToHubspot}
-              className="px-4 py-2 rounded-xl bg-[#56B0CB] hover:bg-[#4a9ab8] text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-2 sm:px-4 rounded-xl bg-[#56B0CB] hover:bg-[#4a9ab8] text-white text-xs sm:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
             >
               {quoteLoading ? "Sending…" : "Push to HubSpot"}
             </button>
@@ -470,7 +475,7 @@ function Summary({
               href={quoteLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block px-4 py-2 rounded-xl bg-[#DDB244] hover:bg-[#c9a33e] text-white text-sm font-medium transition-colors"
+              className="inline-block px-3 py-2 sm:px-4 rounded-xl bg-[#DDB244] hover:bg-[#c9a33e] text-white text-xs sm:text-sm font-medium transition-colors whitespace-nowrap"
             >
               View Quote
             </a>
@@ -482,7 +487,7 @@ function Summary({
           <button
             type="button"
             onClick={() => setMarginHeld((v) => !v)}
-            className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium transition-colors"
+            className="px-3 py-2 sm:px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap"
           >
             {marginHeld ? "Hide Margin" : "Show Margin"}
           </button>
