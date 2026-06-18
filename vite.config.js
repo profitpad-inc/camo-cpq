@@ -8,5 +8,5 @@ export default defineConfig({
     tailwindcss(),
     react(),
   ],
-  base: "/", // <-- use '/' if serving at root, or '/react-app/' if subfolder
+  base: '/camo-cpq/',
 });
