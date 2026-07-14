@@ -81,8 +81,8 @@ The "Send Quote" modal's preview iframe (`quoteIframeContainerEl`) loads a cross
 |---|---|
 | `index.html` | Page shell, loads `app.js` |
 | `app.js` | Everything: password form, pricing fetch + normalization, rendering, the HubSpot push |
-| `styles.css` | Compiled Tailwind output |
-| `service-worker.js`, `manifest.json`, `favicon*.png` | PWA shell, offline caching |
+| `styles.css` | Hand-written CSS, no build step, no framework |
+| `service-worker.js`, `manifest.json` | PWA shell, offline caching |
 
 ## Password protection
 

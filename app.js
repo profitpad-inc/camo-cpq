@@ -1,4 +1,4 @@
-// Vanilla JS port of the React app — see ../src/App.jsx for the original.
+// Vanilla JS port of an earlier React version of this app.
 // Single mutable `state` object + one full re-render per state change,
 // with focus/selection preserved across re-renders (see restoreFocus below).
 
@@ -194,8 +194,6 @@ const state = {
   // form never flashes for a returning visitor; see boot section below.
   checkingStoredPassword: false,
 
-  loading: true,
-  error: null,
   products: [],
   addons: [],
   productCategories: [],
@@ -318,7 +316,6 @@ async function submitPassword(password) {
     state.addonCategories = data.addonCategories;
     state.packages = data.packages;
     state.authed = true;
-    state.loading = false;
     storePassword(password);
     resolveInitialStep();
   } catch (e) {
@@ -1403,9 +1400,6 @@ function appHtml() {
   // page instead, same as what's shown right after a fresh login.
   if (!state.authed && !state.checkingStoredPassword) {
     return loginSectionHtml();
-  }
-  if (state.authed && state.error) {
-    return `<div class="state-message state-message--error">${escapeHtml(state.error)}</div>`;
   }
   if (state.step !== "cpq") {
     return dealSelectSectionHtml();

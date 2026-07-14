@@ -210,15 +210,6 @@ svg {
   }
 }
 
-.state-message {
-  text-align: center;
-  color: var(--color-gray-600);
-}
-
-.state-message--error {
-  color: var(--color-red-600);
-}
-
 /* --- buttons --- */
 
 .btn {
