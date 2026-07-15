@@ -1,5 +1,5 @@
 // v2/service-worker.js
-const CACHE_NAME = "cpq-v2-cache-v3";
+const CACHE_NAME = "cpq-v2-cache-v4";
 
 // Only pre-cache the app shell — sheets data is cached at runtime on first load.
 // Keeping external URLs out of PRECACHE_URLS prevents a single fetch failure
@@ -9,6 +9,7 @@ const PRECACHE_URLS = [
   "./index.html",
   "./styles.css",
   "./app.js",
+  "https://static.californiamobility.com/global.css",
   "https://4185119.fs1.hubspotusercontent-na2.net/hubfs/4185119/Favicon%20CM.png",
   "https://4185119.fs1.hubspotusercontent-na2.net/hubfs/4185119/california%20mobility%20horizontal%20white%20background.png",
 ];

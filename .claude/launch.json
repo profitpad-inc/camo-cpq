@@ -4,8 +4,14 @@
     {
       "name": "static-site",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4173"],
+      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "sales.californiamobility.com"],
       "port": 4173
+    },
+    {
+      "name": "static-assets",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4174", "--directory", "static.californiamobility.com"],
+      "port": 4174
     }
   ]
 }

@@ -77,12 +77,19 @@ The "Send Quote" modal's preview iframe (`quoteIframeContainerEl`) loads a cross
 
 ## File map
 
+Two directories, one per deploy target subdomain (see "Deployment" below):
+
 | File | Purpose |
 |---|---|
-| `index.html` | Page shell, loads `app.js` |
-| `app.js` | Everything: password form, pricing fetch + normalization, rendering, the HubSpot push |
-| `styles.css` | Hand-written CSS, no build step, no framework |
-| `service-worker.js`, `manifest.json` | PWA shell, offline caching |
+| `sales.californiamobility.com/index.html` | Page shell, loads `app.js` |
+| `sales.californiamobility.com/app.js` | Everything: password form, pricing fetch + normalization, rendering, the HubSpot push |
+| `sales.californiamobility.com/styles.css` | Hand-written CSS, app-specific, no build step, no framework |
+| `sales.californiamobility.com/service-worker.js`, `manifest.json` | PWA shell, offline caching |
+| `static.californiamobility.com/global.css` | Shared brand tokens + reset, meant to be reused by other California Mobility webtools, not just this one |
+
+## Deployment
+
+This app deploys to `sales.californiamobility.com`; `global.css` deploys separately to `static.californiamobility.com`, a shared, unauthenticated asset host any future internal webtool can also link to. `index.html` links `global.css` by its absolute production URL, since in production these are two different origins, not sibling folders. nginx configs for both are in `deploy/nginx/`. Until `static.californiamobility.com` DNS/hosting exists, that stylesheet link (and the matching entry in `service-worker.js`'s `PRECACHE_URLS`) won't resolve, brand tokens/reset won't apply locally and, because `cache.addAll` is all-or-nothing, the service worker's install step will fail outright rather than partially caching.
 
 ## Password protection
 
@@ -166,4 +173,4 @@ Things that are easy to get wrong here, and did trip up earlier versions of this
 
 ## Local development
 
-`.claude/launch.json` defines a `static-site` config (`python3 -m http.server 4173`) for previewing the site. There is no build step, edit `app.js` directly and reload.
+`.claude/launch.json` defines a `static-site` config (`python3 -m http.server 4173`, serving `sales.californiamobility.com/`) for previewing the app, and a `static-assets` config (port 4174, serving `static.californiamobility.com/`) for previewing `global.css` on its own. There is no build step, edit `app.js` directly and reload. Note `index.html` links `global.css` from its absolute production URL, not from the local `static-assets` server, so until that subdomain is live, local previews of the app run without the shared brand tokens/reset applied.

@@ -746,6 +746,7 @@ async function handleSendQuoteEmail() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         hs_deal_id: state.selectedDeal ? state.selectedDeal.hs_object_id : null,
+        quote_link: state.quoteLink,
         to_emails: toEmails,
         subject: state.quoteEmailSubject.trim(),
         note_from_rep: state.quoteEmailNote.trim(),
@@ -1523,10 +1524,32 @@ function renderQuoteEmailModal() {
   // pane's real size changes, including this display:none -> flex moment.
 }
 
+// .panel__body (product/add-on lists) are torn down and recreated on every
+// render along with the rest of #app, which would otherwise reset their
+// scroll position to the top on every click. There's no stable id to key off
+// of, but the panels always render in the same order, so position in the
+// NodeList is enough.
+function capturePanelScroll() {
+  return Array.from(root.querySelectorAll(".panel__body")).map((el) => el.scrollTop);
+}
+
+function restorePanelScroll(saved) {
+  // .panel__body has scroll-behavior: smooth (styles.css), which would
+  // otherwise animate this restore from the post-remount scrollTop of 0 up
+  // to the saved position instead of snapping there instantly. Passing an
+  // explicit behavior overrides the CSS, same trick used for the
+  // window.scrollTo below.
+  root.querySelectorAll(".panel__body").forEach((el, i) => {
+    if (saved[i] != null) el.scrollTo({ top: saved[i], behavior: "instant" });
+  });
+}
+
 function render() {
   const saved = captureFocus();
+  const savedScroll = capturePanelScroll();
   root.innerHTML = appHtml();
   restoreFocus(saved);
+  restorePanelScroll(savedScroll);
   renderQuoteEmailModal();
 }
 
