@@ -27,10 +27,18 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
-// --- pricing data (password-gated) ---
+// --- pricing data (Google-auth-gated) ---
 const PRICING_URL = "https://n8n.californiamobility.com/webhook/camo-cpq/pricing";
 const HS_FETCH_URL = "https://n8n.californiamobility.com/webhook/camo-cpq/hs-fetch";
 const HUBSPOT_DEAL_URL_BASE = "https://app-na2.hubspot.com/contacts/4185119/record/0-3/";
+
+// From the OAuth 2.0 Client ID (type "Web application") created in the GCP
+// project's "APIs & Services > Credentials" page. Public value, safe to ship
+// client-side, it only identifies which app is requesting sign-in; it is not
+// a secret and does not grant access by itself. See HANDOFF.md for the full
+// GCP setup checklist and what n8n needs to verify on its end.
+// chris.becher@profitpad.com https://console.cloud.google.com/auth/clients?project=camobility 
+const GOOGLE_CLIENT_ID = "1062410601074-lkp9bo5oi2s893asvk0saa4bdsq4pshg.apps.googleusercontent.com";
 
 // Client asked to hide the per-line-item Cost column for now (margin % stays
 // visible under "Show Margin"); flip this back on if they want it restored.
@@ -41,15 +49,17 @@ const SHOW_COST_COLUMN = false;
 // is fetched with its own &sheet= call, in parallel, and merged here.
 const PRICING_SHEETS = ["products", "options", "packages"];
 
-async function fetchPricingData(password) {
+async function fetchPricingData(idToken) {
   const responses = await Promise.all(
     PRICING_SHEETS.map((sheet) =>
-      fetch(`${PRICING_URL}?p=${encodeURIComponent(password)}&sheet=${sheet}`),
+      fetch(`${PRICING_URL}?sheet=${sheet}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      }),
     ),
   );
 
   if (responses.some((res) => res.status === 401 || res.status === 403)) {
-    const err = new Error("Incorrect password.");
+    const err = new Error("Your Google account isn't authorized to view pricing.");
     err.code = "unauthorized";
     throw err;
   }
@@ -81,35 +91,66 @@ async function fetchDeals(search) {
   return Array.isArray(data.hs_deals) ? data.hs_deals : [];
 }
 
-// Remembers a working password across sessions (including offline ones) so
-// the login form doesn't reappear on every visit. Combined with the service
-// worker's network-first-then-cache handling of this same GET URL, replaying
-// the stored password while offline resolves from the cached response
-// instead of failing, no separate offline data store needed.
-const PRICING_PASSWORD_STORAGE_KEY = "cpq-pricing-password";
+// While online, returning visitors are recognized by Google's own sign-in
+// session, not by anything this app stores: on boot, google.accounts.id
+// .prompt() attempts a silent sign-in (One Tap / auto-select) using that
+// existing Google session, and if it succeeds we get a fresh ID token
+// without the user clicking anything. If there's no active Google session
+// (or the user dismissed it before), the explicit "Sign in with Google"
+// button renders instead. See renderGoogleButton() and initGoogleAuth()
+// below.
+//
+// That path needs a live network round-trip to Google, though, so it can't
+// work offline. The last successfully-verified token is kept in localStorage
+// purely so an offline returning visitor isn't stranded on the sign-in
+// screen (see boot section): if the app boots offline and finds one, it's
+// replayed straight into authenticateWithGoogle() without going through
+// Google at all. That fetch then fails over the network (there's no
+// connection to n8n either) and the service worker's cache fallback serves
+// the last successful pricing response instead, exactly like it always has
+// for offline visits, see service-worker.js. Because that path never
+// actually reaches n8n, it doesn't matter that the replayed token may have
+// since expired; it's only there so the fetch has *a* header to send.
+// Whenever the app is online, this stored value is never trusted on its
+// own, initGoogleAuth() always re-verifies a fresh token with n8n instead.
+const GOOGLE_SESSION_STORAGE_KEY = "cpq-google-last-session";
 
-function loadStoredPassword() {
+function loadStoredGoogleSession() {
   try {
-    return localStorage.getItem(PRICING_PASSWORD_STORAGE_KEY);
+    const raw = localStorage.getItem(GOOGLE_SESSION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-function storePassword(password) {
+function storeGoogleSession(idToken, email, name) {
   try {
-    localStorage.setItem(PRICING_PASSWORD_STORAGE_KEY, password);
+    localStorage.setItem(GOOGLE_SESSION_STORAGE_KEY, JSON.stringify({ idToken, email, name }));
   } catch {
-    // localStorage unavailable (private browsing, quota, etc.); the login
-    // form still works, it just won't be remembered next time.
+    // localStorage unavailable (private browsing, quota, etc.); sign-in
+    // still works, offline replay just won't be available on this device.
   }
 }
 
-function clearStoredPassword() {
+function clearStoredGoogleSession() {
   try {
-    localStorage.removeItem(PRICING_PASSWORD_STORAGE_KEY);
+    localStorage.removeItem(GOOGLE_SESSION_STORAGE_KEY);
   } catch {
     // ignore
+  }
+}
+
+// Decodes the ID token's payload for display only (name/email shown in the
+// header). This is NOT verification, it's just reading a JWT's own claims
+// client-side; the token's signature is verified server-side by n8n before
+// any pricing data is served.
+function decodeIdTokenPayload(idToken) {
+  try {
+    const payload = idToken.split(".")[1];
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
   }
 }
 
@@ -190,9 +231,13 @@ const state = {
   authed: false,
   authLoading: false,
   authError: null,
-  // true only while auto-retrying a stored password on boot, so the login
+  // true only while attempting a silent Google sign-in on boot, so the login
   // form never flashes for a returning visitor; see boot section below.
-  checkingStoredPassword: false,
+  checkingGoogleSession: false,
+  // set once authed, from the Google ID token's own claims; display only.
+  userEmail: null,
+  userName: null,
+  userMenuOpen: false,
 
   products: [],
   addons: [],
@@ -303,12 +348,12 @@ function syncAddonsToProduct() {
 }
 
 // --- actions ---
-async function submitPassword(password) {
+async function authenticateWithGoogle(idToken) {
   state.authLoading = true;
   state.authError = null;
   render();
   try {
-    const raw = await fetchPricingData(password);
+    const raw = await fetchPricingData(idToken);
     const data = normalizePricingData(raw);
     state.products = data.products;
     state.addons = data.addons;
@@ -316,11 +361,18 @@ async function submitPassword(password) {
     state.addonCategories = data.addonCategories;
     state.packages = data.packages;
     state.authed = true;
-    storePassword(password);
+    const claims = decodeIdTokenPayload(idToken);
+    state.userEmail = claims?.email || null;
+    state.userName = claims?.name || null;
+    storeGoogleSession(idToken, state.userEmail, state.userName);
     resolveInitialStep();
   } catch (e) {
     if (e.code === "unauthorized") {
-      clearStoredPassword();
+      // Not this user's fault the account isn't allowlisted; don't leave
+      // Google auto-selecting the same rejected account on the next visit,
+      // and don't let a rejected account keep unlocking offline replay either.
+      window.google?.accounts?.id?.disableAutoSelect();
+      clearStoredGoogleSession();
     }
     state.authError =
       e.code === "unauthorized" || e.code === "unavailable"
@@ -328,9 +380,36 @@ async function submitPassword(password) {
         : "Could not reach the pricing service. Please try again.";
   } finally {
     state.authLoading = false;
-    state.checkingStoredPassword = false;
+    state.checkingGoogleSession = false;
     render();
   }
+}
+
+// Clears the app's own session and tells Google not to silently sign this
+// browser back in on the next load; the explicit button reappears instead.
+function signOut() {
+  window.google?.accounts?.id?.disableAutoSelect();
+  clearStoredGoogleSession();
+  state.authed = false;
+  state.userEmail = null;
+  state.userName = null;
+  state.userMenuOpen = false;
+  state.products = [];
+  state.addons = [];
+  state.productCategories = [];
+  state.addonCategories = [];
+  state.packages = [];
+  state.step = "deal-select";
+  state.selectedDeal = null;
+  state.dealIdNotFound = null;
+  // maybeAutoLookupDeal() only ever runs its ?hs_deal_id= lookup once per
+  // page load (dealAutoLookupAttempted guards against re-fetching on every
+  // render); resetting it here lets a fresh sign-in resolve the deal again
+  // instead of leaving the "Looking up deal…" spinner stuck forever with
+  // nothing left to un-stick it. dealAutoLookupPromise itself is left alone
+  // and reused as-is, its result doesn't change just because of a sign-out.
+  dealAutoLookupAttempted = false;
+  render();
 }
 
 // Finds the package whose HubSpot dropdown value matches a deal's `product`
@@ -769,20 +848,22 @@ async function handleSendQuoteEmail() {
 
 // --- templates ---
 function loginSectionHtml() {
+  // The actual button is rendered imperatively into #google-signin-button by
+  // renderGoogleButton() (called from render(), see below), since Google
+  // Identity Services attaches its own iframe/markup to a live DOM node
+  // rather than accepting an HTML string. This just reserves the container.
   return `
     <div class="login-card">
-      <h2 class="login-card__title">Password required</h2>
-      <p class="login-card__subtitle">Enter the password to load Camo CPQ.</p>
-      <form id="login-form" class="stack-3">
-        <input type="password" id="login-password" name="password" autocomplete="current-password"
-          class="input input--block"
-          placeholder="Password" autofocus ${state.authLoading ? "disabled" : ""} />
+      <h2 class="login-card__title">Sign in required</h2>
+      <p class="login-card__subtitle">Sign in with your Google account to load Camo CPQ.</p>
+      <div class="stack-3">
+        ${
+          state.authLoading || state.checkingGoogleSession
+            ? `<div class="panel__loading"><span class="spinner" aria-hidden="true"></span>Signing you in…</div>`
+            : `<div id="google-signin-button"></div>`
+        }
         ${state.authError ? `<p class="form-error">${escapeHtml(state.authError)}</p>` : ""}
-        <button type="submit" ${state.authLoading ? "disabled" : ""}
-          class="btn btn--primary btn--block">
-          ${state.authLoading ? "Checking…" : "Unlock"}
-        </button>
-      </form>
+      </div>
     </div>
   `;
 }
@@ -1395,11 +1476,57 @@ function backToDealSelect() {
   render();
 }
 
+// Initials for the header avatar: prefer the Google account's display name
+// (first letter of up to the first two words), falling back to the first
+// two letters of the email's local part when only an email is available.
+function getUserInitials() {
+  const name = state.userName?.trim();
+  if (name) {
+    const initials = name
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("");
+    if (initials) return initials.toUpperCase();
+  }
+  const email = state.userEmail?.trim();
+  if (email) return email.slice(0, 2).toUpperCase();
+  return "?";
+}
+
+// Rendered into #header-user-menu, which lives in the static header markup
+// in index.html, outside #app — same reason the Google button is rendered
+// separately (see renderGoogleButton), so it survives every #app re-render
+// instead of being torn down and recreated on every state change.
+function headerUserMenuHtml() {
+  if (!state.authed) return "";
+  const label = escapeHtml(state.userEmail || state.userName || "");
+  return `
+    <div class="user-menu">
+      <button type="button" data-action="toggle-user-menu" class="user-menu__avatar"
+        aria-haspopup="true" aria-expanded="${state.userMenuOpen ? "true" : "false"}"
+        aria-label="Account menu">${escapeHtml(getUserInitials())}</button>
+      ${
+        state.userMenuOpen
+          ? `
+        <div class="user-menu__panel" role="menu">
+          <div class="user-menu__email">${label}</div>
+          <button type="button" data-action="sign-out" class="btn btn--muted btn--block">Sign out</button>
+        </div>
+      `
+          : ""
+      }
+    </div>
+  `;
+}
+
 function appHtml() {
-  // A stored password is auto-retried on boot (see boot section below); skip
-  // the login form entirely while that's in flight and show the deal-select
-  // page instead, same as what's shown right after a fresh login.
-  if (!state.authed && !state.checkingStoredPassword) {
+  // Sign-in always gates the deal search, even while a silent sign-in
+  // attempt is still in flight on boot (see boot section below) — the
+  // deal-select screen (and its search box) only ever appears once
+  // state.authed is actually true. loginSectionHtml() shows its own
+  // spinner while state.checkingGoogleSession/authLoading are in progress.
+  if (!state.authed) {
     return loginSectionHtml();
   }
   if (state.step !== "cpq") {
@@ -1417,6 +1544,14 @@ function appHtml() {
 
 // --- render loop with focus preservation ---
 const root = document.getElementById("app");
+const headerUserMenuEl = document.getElementById("header-user-menu");
+
+// Kept separate from render()'s #app replacement so opening/closing the
+// menu (or a state change elsewhere) doesn't need to re-render the whole
+// app just to keep the header in sync.
+function renderHeaderUserMenu() {
+  headerUserMenuEl.innerHTML = headerUserMenuHtml();
+}
 
 function captureFocus(container = root) {
   const el = document.activeElement;
@@ -1544,6 +1679,25 @@ function restorePanelScroll(saved) {
   });
 }
 
+// Google Identity Services attaches its button to a live DOM node rather
+// than accepting an HTML string, so it can't be part of appHtml() like
+// everything else; render it into the placeholder loginSectionHtml() left
+// behind, after every re-render, same pattern as renderQuoteEmailModal().
+function renderGoogleButton() {
+  const container = document.getElementById("google-signin-button");
+  if (!container || !window.google?.accounts?.id) return;
+  window.google.accounts.id.renderButton(container, {
+    type: "standard",
+    theme: "outline",
+    size: "large",
+    width: 300,
+    // "pill" is the roundest corner option Google's button supports; it's
+    // rendered inside a cross-origin iframe, so its CSS isn't ours to
+    // override otherwise.
+    shape: "pill",
+  });
+}
+
 function render() {
   const saved = captureFocus();
   const savedScroll = capturePanelScroll();
@@ -1551,20 +1705,29 @@ function render() {
   restoreFocus(saved);
   restorePanelScroll(savedScroll);
   renderQuoteEmailModal();
+  renderGoogleButton();
+  renderHeaderUserMenu();
 }
 
 // --- event delegation ---
-root.addEventListener("submit", (e) => {
-  if (e.target.id === "login-form") {
-    e.preventDefault();
-    const password = document.getElementById("login-password").value;
-    submitPassword(password);
-  }
-});
-
 // click/input/keydown are delegated on `document`, not `root`, because the
 // send-quote modal is deliberately mounted outside #app (see quoteModalEl
 // above) so its contents never go through #app's innerHTML replacement.
+
+// Closes the account menu on any click outside it. This has to run and
+// finish *before* the action-switch listener below: that listener's
+// "toggle-user-menu" case calls renderHeaderUserMenu(), which replaces
+// #header-user-menu's contents and detaches e.target from the document —
+// if this check ran after that, e.target.closest("#header-user-menu") would
+// already be evaluating a disconnected node and wrongly report "outside",
+// closing the menu on the same click that opened it.
+document.addEventListener("click", (e) => {
+  if (!state.userMenuOpen) return;
+  if (e.target.closest("#header-user-menu")) return;
+  state.userMenuOpen = false;
+  renderHeaderUserMenu();
+});
+
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-action]");
   if (!el) return;
@@ -1629,6 +1792,13 @@ document.addEventListener("click", (e) => {
     case "send-quote-email":
       if (!el.hasAttribute("disabled")) handleSendQuoteEmail();
       break;
+    case "sign-out":
+      signOut();
+      break;
+    case "toggle-user-menu":
+      state.userMenuOpen = !state.userMenuOpen;
+      renderHeaderUserMenu();
+      break;
   }
 });
 
@@ -1691,6 +1861,10 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.quoteEmailModalOpen) {
     closeSendQuoteModal();
   }
+  if (e.key === "Escape" && state.userMenuOpen) {
+    state.userMenuOpen = false;
+    renderHeaderUserMenu();
+  }
 });
 
 // --- online/offline tracking ---
@@ -1704,18 +1878,69 @@ window.addEventListener("offline", () => {
 });
 
 // --- boot ---
-const storedPassword = loadStoredPassword();
-if (storedPassword) {
-  // Skip the login form entirely and show the main layout (with a spinner
-  // in the product area) while the stored password is retried silently.
-  // Falls back to a normal empty login form if it fails, e.g. the password
-  // was changed server-side since it was stored.
-  state.checkingStoredPassword = true;
-}
 render();
 
-if (storedPassword) {
-  submitPassword(storedPassword);
+// Called once the Google Identity Services script (loaded async in
+// index.html) is confirmed ready, see the load/error listeners on that
+// script tag below, which is what actually invokes this. Only sets Google
+// up to handle an *explicit* button click; there's no silent/One-Tap
+// sign-in attempt here at all (see the storedGoogleSession replay below for
+// how returning visitors skip the button instead).
+function initGoogleAuth() {
+  if (!window.google?.accounts?.id) {
+    // Script didn't load (blocked, offline, etc). There's no local fallback,
+    // Google has to do the actual signing in, so just surface it instead of
+    // leaving an unexplained empty button container.
+    state.authError = "Could not load Google Sign-In. Check your connection and reload.";
+    render();
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: (response) => authenticateWithGoogle(response.credential),
+  });
+  render();
+}
+
+const storedGoogleSession = loadStoredGoogleSession();
+
+if (storedGoogleSession) {
+  // Skip Google's own sign-in flow (and its silent-sign-in prompt) entirely
+  // on a returning visit: replay the last verified ID token straight into
+  // authenticateWithGoogle() instead. While online, that token still gets
+  // fully re-verified by n8n on this call (see authenticateWithGoogle); an
+  // expired/rejected token just falls back to the explicit Google button
+  // below, same as a first-time visitor. While offline, there's no reaching
+  // n8n either, so the service worker's cache fallback serves the last
+  // successful pricing response, exactly like it always has for offline
+  // visits, see GOOGLE_SESSION_STORAGE_KEY above.
+  state.checkingGoogleSession = true;
+  render();
+  authenticateWithGoogle(storedGoogleSession.idToken);
+}
+
+// Google Identity Services is still initialized in parallel (not only when
+// there's no stored session) so the explicit "Sign in with Google" button
+// is ready to use immediately if the stored-token replay above fails.
+if (window.google?.accounts?.id) {
+  // Already loaded and executed by the time this line runs (e.g. cached,
+  // or this synchronous script happened to run after the async one).
+  initGoogleAuth();
+} else {
+  // Deliberately NOT window's `load` event here — that waits for every
+  // resource on the page, including the header/favicon images pulled from
+  // HubSpot's CDN, which was adding multiple seconds before the sign-in
+  // button ever had a chance to appear. Waiting on this one script tag's
+  // own load/error event gets the button up as soon as Google's script
+  // itself is actually ready, nothing else on the page should hold it back.
+  const script = document.getElementById("google-identity-script");
+  if (script) {
+    script.addEventListener("load", initGoogleAuth, { once: true });
+    script.addEventListener("error", initGoogleAuth, { once: true });
+  } else {
+    // Shouldn't happen (the tag lives in index.html), but don't hang forever.
+    window.addEventListener("load", initGoogleAuth);
+  }
 }
 
 if ("serviceWorker" in navigator) {

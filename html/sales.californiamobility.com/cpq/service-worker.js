@@ -9,7 +9,7 @@ const PRECACHE_URLS = [
   "./index.html",
   "./styles.css",
   "./app.js",
-  "https://static.californiamobility.com/global.css",
+  "../../globals/global.css",
   "https://4185119.fs1.hubspotusercontent-na2.net/hubfs/4185119/Favicon%20CM.png",
   "https://4185119.fs1.hubspotusercontent-na2.net/hubfs/4185119/california%20mobility%20horizontal%20white%20background.png",
 ];

@@ -9,13 +9,14 @@
     <link rel="icon" type="image/png" href="https://4185119.fs1.hubspotusercontent-na2.net/hubfs/4185119/Favicon%20CM.png" sizes="32x32" />
     <link rel="manifest" href="./manifest.json" />
 
-    <!-- <link href="https://static.californiamobility.com/global.css" rel="stylesheet"> TODO -->
-    <link href="../../static.californiamobility.com/global.css" rel="stylesheet">
+    <link href="../../globals/global.css" rel="stylesheet">
     <link href="./styles.css" rel="stylesheet">
 
     <meta name="theme-color" content="#56b0cb" />
     <meta name="apple-mobile-web-app-status-bar-style" content="#56b0cb" />
     <meta name="mobile-web-app-capable" content="yes">
+
+    <script id="google-identity-script" src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
 <body class="page">
@@ -24,6 +25,7 @@
             <header class="site-header">
                 <div class="site-header__inner">
                     <img class="site-header__logo" src="https://4185119.fs1.hubspotusercontent-na2.net/hubfs/4185119/california%20mobility%20horizontal%20white%20background.png" alt="Camo CPQ" />
+                    <div class="site-header__user" id="header-user-menu"></div>
                 </div>
             </header>
         </div>
