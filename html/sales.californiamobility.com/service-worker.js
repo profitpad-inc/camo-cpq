@@ -1,17 +1,29 @@
 // v2/service-worker.js
-const CACHE_NAME = "cpq-v2-cache-v5";
+//
+// Lives one directory above cpq/ (not inside it) so its default scope is
+// "/sales.californiamobility.com/" instead of "/sales.californiamobility.com/cpq/".
+// A service worker only ever intercepts requests whose URL starts with its
+// scope string; "/cpq" (no trailing slash) does NOT start with "/cpq/", so a
+// SW scoped to "/cpq/" silently never sees — and can't offline-serve — a
+// visit to the no-slash URL, only "/cpq/" itself. Scoping one level higher
+// covers both, since both start with "/sales.californiamobility.com/". See
+// the registration call in cpq/app.js, which points here with an absolute
+// path for the same reason: a relative "./service-worker.js" resolves
+// differently depending on whether the *page's own* URL has a trailing
+// slash, so it can silently 404 rather than always finding this file.
+const CACHE_NAME = "cpq-v2-cache-v6";
 
 // Only pre-cache the app shell — sheets data is cached at runtime on first load.
 // Keeping external URLs out of PRECACHE_URLS prevents a single fetch failure
 // from aborting the entire SW install (cache.addAll is all-or-nothing).
 const PRECACHE_URLS = [
-  "./",
-  "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./vendor/flatpickr.min.css",
-  "./vendor/flatpickr.min.js",
-  "../../globals/global.css",
+  "./cpq/",
+  "./cpq/index.html",
+  "./cpq/styles.css",
+  "./cpq/app.js",
+  "./cpq/vendor/flatpickr.min.css",
+  "./cpq/vendor/flatpickr.min.js",
+  "./globals/global.css",
   "https://4185119.fs1.hubspotusercontent-na2.net/hubfs/4185119/Favicon%20CM.png",
   "https://4185119.fs1.hubspotusercontent-na2.net/hubfs/4185119/california%20mobility%20horizontal%20white%20background.png",
 ];
@@ -61,7 +73,7 @@ self.addEventListener("fetch", (event) => {
         if (cached) return cached;
 
         if (request.mode === "navigate") {
-          return caches.match("./index.html");
+          return caches.match("./cpq/index.html");
         }
         return Response.error();
       }

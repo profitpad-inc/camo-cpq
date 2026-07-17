@@ -80,22 +80,24 @@ const GOOGLE_CLIENT_ID = "1062410601074-lkp9bo5oi2s893asvk0saa4bdsq4pshg.apps.go
 // visible under "Show Margin"); flip this back on if they want it restored.
 const SHOW_COST_COLUMN = false;
 
-// The pricing endpoint backs onto a Google Sheet and can't fetch all three
+// Below this margin %, the "Show Margin" button and the margin % text turn a
+// warning colour, whether or not the margin is currently shown.
+const LOW_MARGIN_THRESHOLD = 30;
+
+// The pricing endpoint backs onto a Google Sheet and can't fetch all its
 // sheets in one request without serializing them server-side, so each sheet
-// is fetched with its own &sheet= call, in parallel, and merged here.
-const PRICING_SHEETS = ["products", "options", "packages"];
+// is fetched with its own &sheet= call. `products` is split out from
+// `options`/`packages` below: it's always fetched fresh (see
+// fetchProductsSheet), the other two are cache-eligible (see
+// fetchOptionsPackagesAndTaxes/loadPricingData).
+const GOOGLE_UNAUTHORIZED_MESSAGE =
+  "Your Google account isn't <a href=\"https://n8n.californiamobility.com/workflow/ZBPvOf0Se3qv5WM3/ab615d\" target=\"_blank\">authorized</a> to view pricing.  Email chris.becher@profitpad.com for help.";
+const DEV_BYPASS_UNAUTHORIZED_MESSAGE =
+  "Dev bypass password was <a href=\"https://n8n.californiamobility.com/workflow/ZBPvOf0Se3qv5WM3/ab615d\" target=\"_blank\">rejected</a> by the pricing service.";
 
-async function fetchPricingData(idToken) {
-  const responses = await Promise.all(
-    PRICING_SHEETS.map((sheet) =>
-      fetch(`${PRICING_URL}?sheet=${sheet}`, {
-        headers: { Authorization: `Bearer ${idToken}` },
-      }),
-    ),
-  );
-
+function checkPricingResponses(responses, unauthorizedMessage) {
   if (responses.some((res) => res.status === 401 || res.status === 403)) {
-    const err = new Error("Your Google account isn't <a href=\"https://n8n.californiamobility.com/workflow/ZBPvOf0Se3qv5WM3/ab615d\" target=\"_blank\">authorized</a> to view pricing.");
+    const err = new Error(unauthorizedMessage);
     err.code = "unauthorized";
     throw err;
   }
@@ -104,13 +106,160 @@ async function fetchPricingData(idToken) {
     err.code = "unavailable";
     throw err;
   }
+}
 
-  const [products, options, packages] = await Promise.all(responses.map((res) => res.json()));
+// Best-effort: a miss on the taxes sheet (network failure, unexpected
+// response shape, etc.) just means no tax rates loaded this session, not a
+// broken sign-in — unlike the sheets above, which do treat any failure as
+// fatal. `fetchCall` is a thunk (not the fetch call directly) so this can be
+// reused for both the Bearer-token and dev-password auth paths below.
+//
+// Unlike products/options/packages (each wrapped as `{"<sheet>": [...]}`),
+// this sheet responds with a bare top-level array, not `{"taxes": [...]}`.
+async function fetchTaxRates(fetchCall) {
+  try {
+    const res = await fetchCall();
+    if (!res.ok) {
+      console.warn(`[taxes] sheet=taxes returned ${res.status}, no tax rates loaded this session.`);
+      return [];
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : data.taxes || [];
+  } catch (e) {
+    console.warn("[taxes] sheet=taxes fetch failed, no tax rates loaded this session.", e);
+    return [];
+  }
+}
+
+// This is the session's live auth check: fetched fresh every single call,
+// never through the 48-hour/30-day cache below, so a revoked Google account
+// is caught right away instead of being masked by a still-fresh
+// options/packages/taxes cache. "Fresh every call" still means "fresh
+// whenever the network's actually reachable" — the plain fetch() below goes
+// through the service worker's own network-first-with-cache-fallback (see
+// service-worker.js), so an offline visitor still gets last-known-good
+// products data instead of being stranded.
+async function fetchProductsSheet(idToken) {
+  const res = await fetch(`${PRICING_URL}?sheet=products`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  checkPricingResponses([res], GOOGLE_UNAUTHORIZED_MESSAGE);
+  const data = await res.json();
+  return data.products || [];
+}
+
+// options/packages/taxes are just catalog data, not part of the auth check
+// above, so they're fine to serve from the cache below rather than always
+// hitting the network.
+async function fetchOptionsPackagesAndTaxes(idToken) {
+  const responses = await Promise.all(
+    ["options", "packages"].map((sheet) =>
+      fetch(`${PRICING_URL}?sheet=${sheet}`, { headers: { Authorization: `Bearer ${idToken}` } }),
+    ),
+  );
+  checkPricingResponses(responses, GOOGLE_UNAUTHORIZED_MESSAGE);
+
+  const [options, packages] = await Promise.all(responses.map((res) => res.json()));
+  const taxes = await fetchTaxRates(() =>
+    fetch(`${PRICING_URL}?sheet=taxes`, { headers: { Authorization: `Bearer ${idToken}` } }),
+  );
   return {
-    products: products.products || [],
     options: options.options || [],
     packages: packages.packages || [],
+    taxes,
   };
+}
+
+async function fetchPricingData(idToken) {
+  const [products, rest] = await Promise.all([
+    fetchProductsSheet(idToken),
+    loadPricingData(() => fetchOptionsPackagesAndTaxes(idToken)),
+  ]);
+  return { products, ...rest };
+}
+
+// --- pricing data cache (options/packages/taxes) ---
+// n8n's sheet-backed pricing endpoint doesn't change often enough to justify
+// a network round-trip on every single sign-in, so the merged
+// options/packages/taxes payload (products is excluded, see
+// fetchProductsSheet above) is cached in localStorage, alongside the fetch
+// time, and reused as-is:
+//   - under 48 hours old: used straight away, no network call at all.
+//   - 48 hours to 30 days old: a fresh fetch is attempted if the browser is
+//     online (updating the cache on success); if that fails for any reason
+//     other than an outright unauthorized/unauthenticated response, the
+//     stale-but-still-under-30-days cache is served instead of showing an
+//     error over what would otherwise just be a network hiccup.
+//   - 30+ days old, or no cache at all: always fetched fresh; this is the
+//     outer bound past which stale pricing shouldn't be trusted as a
+//     fallback.
+// An explicit page reload (F5/Cmd+R, or a true cache-bypassing hard reload,
+// Cmd+Shift+R/Ctrl+Shift+R) always forces a fresh fetch regardless of cache
+// age — JS can't reliably tell a plain reload apart from a hard one across
+// browsers, so both are treated as "the visitor explicitly asked for a
+// fresh load," which is the safer failure mode for a live pricing tool.
+const PRICING_CACHE_STORAGE_KEY = "cpq-pricing-cache";
+const PRICING_CACHE_SOFT_TTL_MS = 48 * 60 * 60 * 1000;
+const PRICING_CACHE_HARD_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function readPricingCache() {
+  try {
+    const raw = localStorage.getItem(PRICING_CACHE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.fetchedAt !== "number" || !parsed.data) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePricingCache(data) {
+  try {
+    localStorage.setItem(PRICING_CACHE_STORAGE_KEY, JSON.stringify({ data, fetchedAt: Date.now() }));
+  } catch {
+    // localStorage unavailable (private browsing, quota exceeded, etc.);
+    // caching is best-effort, the app still works, it just fetches fresh
+    // every time.
+  }
+}
+
+function isExplicitPageReload() {
+  try {
+    const [nav] = performance.getEntriesByType("navigation");
+    return nav?.type === "reload";
+  } catch {
+    return false;
+  }
+}
+
+// `fetchFresh` is a thunk wrapping either fetchOptionsPackagesAndTaxes(idToken)
+// or fetchOptionsPackagesAndTaxesWithDevPassword(password), so this cache
+// layer works the same for both auth paths.
+async function loadPricingData(fetchFresh) {
+  const cached = readPricingCache();
+  const ageMs = cached ? Date.now() - cached.fetchedAt : Infinity;
+  const forceRefresh = isExplicitPageReload();
+
+  if (cached && !forceRefresh && ageMs < PRICING_CACHE_SOFT_TTL_MS) {
+    return cached.data;
+  }
+
+  if (cached && !forceRefresh && ageMs < PRICING_CACHE_HARD_TTL_MS) {
+    if (!navigator.onLine) return cached.data;
+    try {
+      const fresh = await fetchFresh();
+      writePricingCache(fresh);
+      return fresh;
+    } catch (e) {
+      if (e.code === "unauthorized") throw e;
+      return cached.data;
+    }
+  }
+
+  const fresh = await fetchFresh();
+  writePricingCache(fresh);
+  return fresh;
 }
 
 // --- local dev auth bypass ---
@@ -148,30 +297,38 @@ function loadDevAuthConfig() {
   });
 }
 
-async function fetchPricingDataWithDevPassword(password) {
+async function fetchProductsSheetWithDevPassword(password) {
+  const res = await fetch(`${PRICING_URL}?sheet=products&p=${encodeURIComponent(password)}`);
+  checkPricingResponses([res], DEV_BYPASS_UNAUTHORIZED_MESSAGE);
+  const data = await res.json();
+  return data.products || [];
+}
+
+async function fetchOptionsPackagesAndTaxesWithDevPassword(password) {
   const responses = await Promise.all(
-    PRICING_SHEETS.map((sheet) =>
+    ["options", "packages"].map((sheet) =>
       fetch(`${PRICING_URL}?sheet=${sheet}&p=${encodeURIComponent(password)}`),
     ),
   );
+  checkPricingResponses(responses, DEV_BYPASS_UNAUTHORIZED_MESSAGE);
 
-  if (responses.some((res) => res.status === 401 || res.status === 403)) {
-    const err = new Error("Dev bypass password was <a href=\"https://n8n.californiamobility.com/workflow/ZBPvOf0Se3qv5WM3/ab615d\" target=\"_blank\">rejected</a> by the pricing service.");
-    err.code = "unauthorized";
-    throw err;
-  }
-  if (responses.some((res) => !res.ok)) {
-    const err = new Error("Could not reach the pricing service. Please try again.");
-    err.code = "unavailable";
-    throw err;
-  }
-
-  const [products, options, packages] = await Promise.all(responses.map((res) => res.json()));
+  const [options, packages] = await Promise.all(responses.map((res) => res.json()));
+  const taxes = await fetchTaxRates(() =>
+    fetch(`${PRICING_URL}?sheet=taxes&p=${encodeURIComponent(password)}`),
+  );
   return {
-    products: products.products || [],
     options: options.options || [],
     packages: packages.packages || [],
+    taxes,
   };
+}
+
+async function fetchPricingDataWithDevPassword(password) {
+  const [products, rest] = await Promise.all([
+    fetchProductsSheetWithDevPassword(password),
+    loadPricingData(() => fetchOptionsPackagesAndTaxesWithDevPassword(password)),
+  ]);
+  return { products, ...rest };
 }
 
 async function authenticateWithDevBypass(password) {
@@ -186,6 +343,7 @@ async function authenticateWithDevBypass(password) {
     state.productCategories = data.productCategories;
     state.addonCategories = data.addonCategories;
     state.packages = data.packages;
+    state.taxRates = data.taxRates;
     state.authed = true;
     state.devBypass = true;
     state.userEmail = null;
@@ -322,6 +480,40 @@ function uniqueInOrder(values) {
   return result;
 }
 
+// Zip -> sales tax rate lookup (see sheet=taxes). Every field but Zip/tax_rate
+// is thrown out, this app has no use for city/county/state/rate_type. The
+// sheet carries one special "zip_unknown" row (its Zip value is literally
+// that string, not a real zip) whose tax_rate is the fallback used whenever
+// the ship-to zip is blank or isn't one of the sheet's recognized zips.
+function normalizeTaxRates(rawTaxes) {
+  const byZip = {};
+  let unknownRate = 0;
+  for (const row of rawTaxes || []) {
+    const rate = Number(row.tax_rate) || 0;
+    if (row.Zip === "zip_unknown") {
+      unknownRate = rate;
+      continue;
+    }
+    // Sheet zips come back as numbers (e.g. 90001), which would drop a
+    // leading zero on zips outside CA's 9xxxx range; re-pad to 5 digits so
+    // lookups against state.shipTo.zip (always a 5-digit string) still match.
+    const zip = String(row.Zip ?? "").trim().padStart(5, "0");
+    if (zip) byZip[zip] = rate;
+  }
+  return { byZip, unknownRate };
+}
+
+// Falls back to the sheet's "zip_unknown" rate whenever no zip is entered or
+// the entered zip isn't a recognized key, same convention the sheet itself
+// uses.
+function getTaxRate(zip) {
+  const trimmed = String(zip || "").trim();
+  if (trimmed && Object.prototype.hasOwnProperty.call(state.taxRates.byZip, trimmed)) {
+    return state.taxRates.byZip[trimmed];
+  }
+  return state.taxRates.unknownRate;
+}
+
 function normalizePricingData(raw) {
   const products = (raw.products || []).map((p) => ({
     sku: p.sku,
@@ -371,6 +563,7 @@ function normalizePricingData(raw) {
     products,
     addons,
     packages,
+    taxRates: normalizeTaxRates(raw.taxes),
   };
 }
 
@@ -395,6 +588,9 @@ const state = {
   productCategories: [],
   addonCategories: [],
   packages: [],
+  // zip -> tax rate lookup (see sheet=taxes), plus the sheet's zip_unknown
+  // fallback rate; see normalizeTaxRates/getTaxRate.
+  taxRates: { byZip: {}, unknownRate: 0 },
 
   // "deal-select" (choose an existing deal or skip to a price lookup) or
   // "cpq" (the main product/add-on/summary layout)
@@ -571,6 +767,7 @@ async function authenticateWithGoogle(idToken, isStoredSessionReplay = false) {
     state.productCategories = data.productCategories;
     state.addonCategories = data.addonCategories;
     state.packages = data.packages;
+    state.taxRates = data.taxRates;
     state.authed = true;
     const claims = decodeIdTokenPayload(idToken);
     state.userEmail = claims?.email || null;
@@ -621,6 +818,7 @@ function signOut() {
   state.productCategories = [];
   state.addonCategories = [];
   state.packages = [];
+  state.taxRates = { byZip: {}, unknownRate: 0 };
   state.step = "deal-select";
   state.selectedDeal = null;
   state.dealIdNotFound = null;
@@ -1032,6 +1230,7 @@ async function handlePushToHubspot() {
   const totalBeforeTax = subtotal - discountAmount;
   const total = totalBeforeTax + taxAmount;
   const margin = totalBeforeTax !== 0 ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100 : 0;
+  const taxRate = getTaxRate(state.shipTo.zip);
 
   state.quoteLoading = true;
   state.quoteLink = null;
@@ -1055,8 +1254,8 @@ async function handlePushToHubspot() {
         discount_amount: discountAmount,
         discount_percentage: discountPercentage,
         tax_amount: taxAmount,
-        tax_percentage: 5,
-        tax_location: "12345",
+        tax_percentage: Number((taxRate * 100).toFixed(2)),
+        tax_location: state.shipTo.zip.trim(),
         currency: "USD",
         total,
         comment: state.quoteComment.trim(),
@@ -1738,6 +1937,9 @@ function summarySectionHtml() {
   const totalBeforeTax = subtotal - discountAmount;
   const total = totalBeforeTax + tax;
   const marginPct = totalBeforeTax !== 0 ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100 : 0;
+  const taxRate = getTaxRate(state.shipTo.zip);
+  const isLowMargin = marginPct < LOW_MARGIN_THRESHOLD;
+  const isLowMarginFromDiscount = isLowMargin && discountAmount > 0;
 
   const marginHeld = state.marginHeld;
   const showCostColumn = marginHeld && SHOW_COST_COLUMN;
@@ -1820,7 +2022,15 @@ function summarySectionHtml() {
     <div class="summary">
       <div class="summary__header">
         <h2 class="section-title">Quote Summary</h2>
-        ${marginHeld ? `<span class="summary__margin">Margin: ${marginPct.toFixed(1)}%</span>` : ""}
+        ${
+          marginHeld
+            ? `<div class="summary__margin-group">
+                <span class="${classNames("summary__margin", isLowMargin && "summary__margin--warning")}">Margin: ${marginPct.toFixed(1)}%</span>
+                <span class="summary__margin-divider">|</span>
+                <span class="summary__margin">Tax Rate: ${(taxRate * 100).toFixed(2)}%</span>
+              </div>`
+            : ""
+        }
       </div>
       <p class="confidential-notice">Confidential. Pricing shown below is for internal/authorized use only, not for external distribution.</p>
 
@@ -1883,7 +2093,7 @@ function summarySectionHtml() {
           <div class="summary__actions-row">
             ${pushButtonHtml}
           </div>
-          <button type="button" data-action="toggle-margin" class="btn btn--muted btn--margin-toggle">
+          <button type="button" data-action="toggle-margin" class="${classNames("btn", "btn--muted", "btn--margin-toggle", isLowMarginFromDiscount && "btn--margin-toggle--warning")}">
             ${marginHeld ? "Hide Margin" : "Show Margin"}
           </button>
         </div>
@@ -2582,6 +2792,66 @@ window.addEventListener("offline", () => {
   render();
 });
 
+// --- re-check auth when the app is resumed, not just freshly loaded ---
+// Closing a tab and reopening one to the same URL is a fresh navigation,
+// the boot logic below runs again from scratch, no issue there. But
+// switching away and back, minimizing/restoring the window, or backgrounding
+// and foregrounding an installed PWA (this app's manifest.json enables
+// "Add to Home Screen") often doesn't reload the page at all — the browser
+// (or OS, for a PWA) just suspends and later resumes the exact same JS
+// execution, so none of the one-time boot code at the bottom of this file
+// runs again. That includes the products-sheet fetch that doubles as this
+// session's live auth check (see fetchProductsSheet above), so a revoked
+// account wouldn't be caught again until an actual reload happened, even
+// while online the whole time.
+// `visibilitychange` covers the ordinary "tab/window/app came back into
+// view" case; `pageshow` with `persisted: true` additionally covers a
+// same-page restore from the browser's back/forward cache specifically,
+// which doesn't always fire visibilitychange in every browser. Either one
+// just re-runs the products check, not a full re-authentication, so it
+// doesn't touch anything else about the current session (selected
+// product/add-ons/deal, in-progress quote, etc. are left exactly as they were).
+let revalidatingAuthOnResume = false;
+
+async function revalidateAuthOnResume() {
+  if (!state.authed || state.devBypass) return;
+  if (!state.isOnline) return;
+  if (revalidatingAuthOnResume) return;
+
+  const storedGoogleSession = loadStoredGoogleSession();
+  if (!storedGoogleSession) return;
+
+  revalidatingAuthOnResume = true;
+  try {
+    await fetchProductsSheet(storedGoogleSession.idToken);
+  } catch (e) {
+    if (e.code === "unauthorized") {
+      // Same handling as a rejected stored-session replay on boot (see
+      // authenticateWithGoogle): don't leave a revoked account signed in or
+      // auto-selectable, and reload straight into a clean sign-in screen
+      // rather than leaving a scary error sitting over whatever was on
+      // screen. This can interrupt an in-progress quote, but continuing to
+      // let a revoked account keep using pricing data isn't the safer
+      // failure mode here.
+      window.google?.accounts?.id?.disableAutoSelect();
+      clearStoredGoogleSession();
+      window.location.reload();
+    }
+    // Any other failure (a network hiccup despite navigator.onLine, a
+    // transient 5xx, etc.) isn't worth interrupting an already-working
+    // session over; just leave things as they are.
+  } finally {
+    revalidatingAuthOnResume = false;
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") revalidateAuthOnResume();
+});
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) revalidateAuthOnResume();
+});
+
 // --- boot ---
 render();
 
@@ -2672,8 +2942,14 @@ if (DEV_BYPASS_CANDIDATE) {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
+    // service-worker.js lives one directory up from here (see its own
+    // top-of-file comment for why), and is registered with an absolute,
+    // repo-root-relative path rather than "./service-worker.js": a relative
+    // path resolves differently depending on whether *this page's* own URL
+    // has a trailing slash (e.g. ".../cpq" vs ".../cpq/"), which can point
+    // at the wrong file (or 404) rather than reliably finding this one.
     navigator.serviceWorker
-      .register("./service-worker.js")
+      .register("/sales.californiamobility.com/service-worker.js")
       .catch((err) => console.error("SW registration failed:", err));
   });
 }

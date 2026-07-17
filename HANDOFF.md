@@ -49,7 +49,7 @@ Camo CPQ is a small configure-price-quote tool. A user picks one product and any
      }
    }
    ```
-   `hs_deal_id`/`deal_name`/`deal_product` come from `state.selectedDeal` (from the deal-select step below) and are `null` when the user skipped straight to a price lookup; when present, the n8n workflow uses `hs_deal_id` to update that existing deal and its line items on the HubSpot side, void any previous quotes on it, and create a new quote. Each of `product` and every entry in `options` carries its own `tax_amount`, computed with the same pre-existing quirky formula described in step 5 (cost × 10% for both, plus an extra price × 10% for options only) and rounded to the nearest cent; the top-level `tax_amount` is their sum, also rounded to the nearest cent. `cost` and `margin` are the same combined-cost and margin-percentage figures shown behind the "Show Margin" toggle, not previously sent to this endpoint. `discount_amount` (dollars) and `discount_percentage` are both always populated as equivalent values regardless of which discount mode (`$` or `%`) the user typed into, computed from whichever one was entered. `tax_percentage`, `tax_location`, and `currency` are static values sent on every request, not computed from the quote.
+   `hs_deal_id`/`deal_name`/`deal_product` come from `state.selectedDeal` (from the deal-select step below) and are `null` when the user skipped straight to a price lookup; when present, the n8n workflow uses `hs_deal_id` to update that existing deal and its line items on the HubSpot side, void any previous quotes on it, and create a new quote. Each of `product` and every entry in `options` carries its own `tax_amount`, computed with the same pre-existing quirky formula described in step 5 (cost × 10% for both, plus an extra price × 10% for options only) and rounded to the nearest cent; the top-level `tax_amount` is their sum, also rounded to the nearest cent. `cost` and `margin` are the same combined-cost and margin-percentage figures shown behind the "Show Margin" toggle, not previously sent to this endpoint. `discount_amount` (dollars) and `discount_percentage` are both always populated as equivalent values regardless of which discount mode (`$` or `%`) the user typed into, computed from whichever one was entered. `tax_percentage` and `tax_location` come from the zip-based tax rate lookup described below (the "Install Address" zip and its looked-up rate); `currency` is still a static value sent on every request.
 
    Each `options[]` entry's `quantity` (an integer, always ≥ 1) and `configuration` (a string, empty when the add-on has no configuration choice) come from the new `max_quantity`/`configuration` sheet columns described below. `price`, `cost`, and `tax_amount` for an option are already multiplied by its `quantity`, this endpoint doesn't need to do that multiplication itself. Products carry neither field, quantity/configuration are add-ons only.
 
@@ -96,6 +96,51 @@ Added to the pricing endpoint alongside `products`/`options` specifically to sup
 - `option_skus` is a comma-joined string like the other SKU lists in this endpoint, not a JSON array, `app.js` splits it with the existing `splitSkuList()` helper.
 - `option_skus` can be an empty string (some packages have no add-ons).
 
+## The `taxes` array (part of the `camo-cpq-pricing` response) and zip-based tax rate lookup
+
+A fourth sheet, `?sheet=taxes`, same `PRICING_URL` endpoint as `products`/`options`/`packages`, same `Authorization: Bearer <idToken>` / dev-bypass `?p=<password>` credential as those three, and confirmed working correctly under both. It's fetched separately from them (not in the same all-or-nothing `Promise.all`, see `fetchTaxRates()` in `app.js`), so a miss here just means no tax rates loaded this session rather than a broken sign-in — a deliberate exception to the "any failure is fatal" rule the other three sheets use, since this one is newer and more likely to have rough edges while it settles in. Once it succeeds at least once, it's merged into the same combined pricing payload as `products`/`options`/`packages` and gets the same app-level cache treatment described below, plus the service worker's own offline/cache fallback underneath that, with no extra code.
+
+Response is `{"taxes": [...]}` (~1816 rows), same wrapped-object shape as `products`/`options`/`packages`; `fetchTaxRates()` in `app.js` also tolerates a bare top-level array (`Array.isArray(data) ? data : data.taxes || []`), since the n8n workflow briefly returned it unwrapped that way during initial testing. Each row:
+
+```json
+{
+  "row_number": 2,
+  "Zip": 90001,
+  "City": "Los Angeles",
+  "County": "Los Angeles County",
+  "Stairlift Region": "Los Angeles",
+  "State": "CA",
+  "tax_rate": 0.0975,
+  "rate_type": "City"
+}
+```
+
+Only `Zip` and `tax_rate` are used, everything else (`City`/`County`/`Stairlift Region`/`State`/`rate_type`/`row_number`) is thrown out. `normalizeTaxRates()` in `app.js` builds a plain zip-string -> `tax_rate` lookup (`state.taxRates.byZip`), re-padding each `Zip` to 5 digits since the sheet returns it as a bare number (e.g. `90001`), which would otherwise silently drop a leading zero on a zip outside CA's `9xxxx` range.
+
+The sheet carries one special row for this, always last in the response: `"Zip": "zip_unknown"` (a literal string, not a real zip), whose `tax_rate` is the fallback rate. `getTaxRate(zip)` (`app.js`) looks up `state.shipTo.zip` first and falls back to this `zip_unknown` rate whenever the ship-to zip is blank or isn't a recognized key, this is also what's shown/sent before a deal (and its zip) has been selected at all.
+
+This rate is looked up from the editable "Install Address" zip (`state.shipTo.zip`, see below), the only zip captured anywhere in the app; it's shown next to the margin percentage once "Show Margin" is toggled (`summarySectionHtml()`), and it's what now actually populates `tax_percentage` (as a percent, e.g. `9.75` for a `0.0975` rate) and `tax_location` (the zip itself) in the `update-hs` push body below, both of which used to be hardcoded stub values (`5` and `"12345"`) before this lookup existed. This is a real sales-tax-rate lookup, a separate concept from the `tax_amount` dollar figure computed elsewhere in this doc (the pre-existing cost-based quirk formula), which is unchanged.
+
+## The pricing data cache (options/packages/taxes; `products` is deliberately excluded)
+
+`products` is split out from the other two core sheets (`fetchProductsSheet()`/`fetchProductsSheetWithDevPassword()` in `app.js`) and always fetched fresh, every single call, never through the cache described below. It's the sheet whose 401/403 response doubles as this session's live auth check, so it can't be allowed to go stale, an account whose access was just revoked needs to be caught immediately, not masked by a still-fresh cache of some other sheet. "Fetched fresh" still just means a plain `fetch()` call, so it goes through the service worker's own network-first-with-cache-fallback (see below) like any other request: fresh whenever the network's actually reachable, last-known-good from the service worker's cache when it isn't.
+
+The merged `options`/`packages`/`taxes` payload (the combined return value of `fetchOptionsPackagesAndTaxes()`/`fetchOptionsPackagesAndTaxesWithDevPassword()`) is cached separately, in `localStorage` (`cpq-pricing-cache`, raw pre-normalization shape, alongside the time it was fetched), since none of the three gate access on their own, they're just catalog data, so a routine sign-in doesn't need to cost a round-trip to n8n for them every time. `loadPricingData()` in `app.js` wraps both auth paths and decides what to do based on the cache's age:
+
+- **Under 48 hours old**: used as-is, no network call at all.
+- **48 hours to 30 days old**: a fresh fetch is attempted if `navigator.onLine`, and the cache is overwritten on success; if that fetch fails for any reason other than an outright `unauthorized` result (a real 401/403), the stale-but-still-under-30-days cache is served instead of surfacing an error over what would otherwise just be a network hiccup. If the browser is offline, the cache is used without even attempting the fetch.
+- **30+ days old, or no cache yet**: always fetched fresh, no fallback; this is the outer bound past which stale pricing data shouldn't be trusted even as a last resort.
+
+An explicit page reload (`performance.getEntriesByType("navigation")[0].type === "reload"`, checked by `isExplicitPageReload()`) always forces a fresh fetch of `options`/`packages`/`taxes` regardless of the cache's age (`products` is already always-fresh, see above, so a reload changes nothing for it). This covers both a plain refresh (F5/Cmd+R) and a true cache-bypassing hard reload (Cmd+Shift+R/Ctrl+Shift+R); JS has no reliable, cross-browser way to tell those two apart, so both are treated as "the visitor explicitly asked for a fresh load," the safer failure mode for a live pricing tool than silently continuing to serve a cache the visitor is actively trying to shake loose.
+
+This `options`/`packages`/`taxes` cache lives underneath (and is separate from) the service worker's own network-first-with-cache-fallback handling described below, it's what actually avoids the network call in the first place for those three; the service worker's own cache is still what serves any of the four sheets on a genuinely offline visit once a fetch is actually attempted (`products` always attempts one; `options`/`packages`/`taxes` only do once 30+ days stale, or on an explicit reload, while offline). It's also separate from the Google sign-in session cache (`GOOGLE_SESSION_STORAGE_KEY`, see below), which is about staying signed in, not about the pricing data itself; the caches don't interact.
+
+### Re-checking auth on resume, not just on load
+
+"`products` is always fetched fresh" above only actually holds if the boot code that calls `fetchPricingData()` runs in the first place, and that code (near the bottom of `app.js`, under `--- boot ---`) is one-time, top-level script execution — it does not automatically re-run just because the visitor comes back to an already-loaded page. Closing a tab and opening a new one to the same URL is a fresh navigation, so that's not an issue; but switching away and back, minimizing/restoring the window, or backgrounding and foregrounding this app once installed as a PWA (`manifest.json` supports "Add to Home Screen") can all resume the exact same JS execution without reloading anything, in which case the products-sheet auth check simply never fires again, even while online the whole time.
+
+`revalidateAuthOnResume()` in `app.js` covers this: it's wired to both `visibilitychange` (fires whenever the tab/window/app becomes visible again) and `pageshow` with `event.persisted` (specifically covers a same-page restore from the browser's back/forward cache, which doesn't reliably fire `visibilitychange` in every browser). Whenever either fires, if the visitor is already signed in (not the local dev bypass, which has no real token to re-check) and the browser reports itself online, it re-runs just `fetchProductsSheet()` with the stored session's ID token, the same auth check `fetchPricingData()` already does on a real load, without touching `options`/`packages`/`taxes` or anything else about the current session, so an in-progress product/add-on/deal selection is left alone. A 401/403 here is handled the same way a rejected stored-session replay is handled at boot: clear the stored session and reload straight into a clean sign-in screen, which can interrupt whatever the visitor was doing, accepted as the safer failure mode over continuing to let a revoked account use pricing data.
+
 ## Rendering approach
 
 There is no framework. `app.js` keeps one mutable `state` object and re-renders the whole `#app` container to an HTML string on every change (`render()`), using event delegation (`data-action` attributes) instead of per-element listeners. Focus and text-selection are captured before a re-render and restored after, so typing in the discount field does not lose cursor position.
@@ -114,15 +159,28 @@ Everything now lives under one `html/` root, served by a single static file serv
 | `html/sales.californiamobility.com/cpq/app.js` | Everything: Google sign-in, pricing fetch + normalization, rendering, the HubSpot push |
 | `html/sales.californiamobility.com/cpq/styles.css` | Hand-written CSS, app-specific, no build step, no framework |
 | `html/sales.californiamobility.com/cpq/vendor/flatpickr.min.js`, `flatpickr.min.css` | Vendored (not CDN-linked) copy of Flatpickr v4.6.13, MIT licensed, pinned/downloaded once rather than fetched at runtime so it still works offline like everything else here; drives the expiration date field's calendar dropdown, see below |
-| `html/sales.californiamobility.com/cpq/service-worker.js`, `manifest.json` | PWA shell, offline caching |
-| `html/globals/global.css` | Shared brand tokens + reset, meant to be reused by other California Mobility webtools, not just this one (renamed from `static.californiamobility.com/`, since it's not actually a separate host) |
-| `html/globals/index.html` | Same redirect stub pattern, to `../sales.californiamobility.com/cpq`, still unclear why this folder needs one at all, worth a quick check with the team |
+| `html/sales.californiamobility.com/service-worker.js` | PWA offline caching; deliberately lives one directory *above* `cpq/`, not inside it, see "Service worker scope" below |
+| `html/sales.californiamobility.com/cpq/manifest.json` | PWA manifest (name, icons, standalone display) |
+| `html/sales.californiamobility.com/globals/global.css` | Shared brand tokens + reset, meant to be reused by other California Mobility webtools, not just this one (renamed from `static.californiamobility.com/`, since it's not actually a separate host). Lives under `sales.californiamobility.com/`, a sibling of `cpq/` and of `service-worker.js`, **not** at the `html/` root — this doc previously said `html/globals/`, that was stale relative to an earlier restructuring |
+| `html/sales.californiamobility.com/globals/index.html` | Same redirect stub pattern, to `../cpq`, still unclear why this folder needs one at all, worth a quick check with the team |
 
 The `sales.californiamobility.com` folder name is a holdover from when this was conceptually two subdomains; it's kept because the live host serves it at that path (`http://34.20.174.32/sales.californiamobility.com/cpq`, per the redirect targets), not because there's an actual subdomain behind it, it's all one server now.
 
 ## Deployment
 
-This app deploys as a single static site rooted at `html/`. `sales.californiamobility.com/cpq/index.html` links `global.css` with a relative path (`../../globals/global.css`), which resolves because `globals/` is a sibling directory under the same `html/` root, everything under `html/` is relative now, not absolute-URL-based. No nginx configs exist in this repo currently; if they exist, they're managed outside this codebase.
+This app deploys as a single static site rooted at `html/`. `sales.californiamobility.com/cpq/index.html` links `global.css` with a relative path (`../globals/global.css`, one level up from `cpq/` into the sibling `globals/` folder), and `service-worker.js` does the same from its own location one level further up (`./globals/global.css`, since from there `globals/` is a direct sibling, not one level up) — both resolve because `globals/` lives under `sales.californiamobility.com/` alongside `cpq/` and `service-worker.js`, not at the `html/` root. No nginx configs exist in this repo currently; if they exist, they're managed outside this codebase.
+
+## Service worker scope: why it lives outside `cpq/`
+
+`service-worker.js` lives at `html/sales.californiamobility.com/service-worker.js`, one directory above `cpq/`, not inside it. This matters for offline use of the no-trailing-slash URL, `https://sales.californiamobility.com/cpq` — which isn't a typo/edge case, it's the actual redirect target of `sales.californiamobility.com/index.html`'s meta-refresh (`url=./cpq`, see the file map above).
+
+A service worker only intercepts requests whose URL starts with its scope string, and by default that scope is the directory containing the SW script itself. With the file at `cpq/service-worker.js`, the default scope is `.../cpq/` (trailing slash); `.../cpq` (no slash) doesn't start with that string, so a visit to the no-slash URL was never actually controlled by the service worker at all, no fetch handler in this file could ever run for it, no matter what that handler did. Online, that visit still "worked" because the browser could reach the network directly; offline, there was nothing installed to catch it, so it failed outright, while `.../cpq/` (with the slash) worked fine since that's the URL the service worker actually installs itself against on a normal first visit.
+
+Moving the file up one level makes its default scope `.../sales.californiamobility.com/`, which is a prefix of both `.../cpq` and `.../cpq/`, so both are covered. `PRECACHE_URLS` and the navigate-fallback path in `service-worker.js` were updated to the new `./cpq/...`-relative paths to match (they're relative to the *service worker's own* location, not the page's).
+
+The registration call itself (`navigator.serviceWorker.register(...)` in `app.js`, near the bottom) was also switched from a relative `"./service-worker.js"` to the absolute `"/sales.californiamobility.com/service-worker.js"`, for a related reason: a relative path resolves against *the current page's own URL*, so `"./service-worker.js"` from a document loaded at the no-slash `.../cpq` would actually resolve one level too high (to `.../service-worker.js`, wrong location) instead of `.../cpq/service-worker.js`, since `.../cpq` has no trailing slash to resolve "the current directory" against. An absolute, repo-root-relative path sidesteps that entirely, since it doesn't depend on the loading page's URL shape at all.
+
+`CACHE_NAME` was bumped (`cpq-v2-cache-v5` → `cpq-v2-cache-v6`) alongside this move so returning visitors' browsers install the new precache list under the new scope rather than continuing to serve out of the old one.
 
 `service-worker.js`'s `PRECACHE_URLS` now points at `../../globals/global.css` (was the old absolute `https://static.californiamobility.com/global.css`, a host that no longer factors into this setup), matching the relative-path scheme used everywhere else under `html/`.
 
