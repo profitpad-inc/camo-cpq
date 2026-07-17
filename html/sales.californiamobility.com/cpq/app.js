@@ -6,6 +6,26 @@ function classNames(...arr) {
   return arr.filter(Boolean).join(" ");
 }
 
+// How long to wait after the user stops typing in a search box before doing
+// anything about it — re-rendering the (filtered) picker for the product/
+// add-on searches (setProductSearchQuery/setAddonSearchQuery below), or
+// firing the actual network search for the deal search (setDealSearchQuery/
+// runDealSearch below).
+const SEARCH_DEBOUNCE_MS = 500;
+
+// This app has no login or payment fields, so a password/payment-manager
+// browser extension (1Password, LastPass, Bitwarden, Dashlane, etc.)
+// offering to fill or save into any of its inputs is always a false
+// positive — these are the respective attributes each one looks for to opt
+// a field out. Spliced into every <input>/<select>/<textarea> below. This
+// does NOT touch the key/credit-card/location-pin icon row iOS itself shows
+// above the keyboard, that's a system-level WebKit/keyboard feature outside
+// any web page's control (same on Safari and Chrome on iOS, since both sit
+// on top of the same OS keyboard), only toggleable from the device's own
+// Settings, not from here.
+const FIELD_NO_AUTOFILL_ATTRS =
+  'autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-dashlane-ignore="true" data-form-type="other"';
+
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -25,6 +45,22 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// yyyy-mm-dd in the visitor's local time, what a native <input type="date">
+// expects/returns.
+function formatDateInput(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// Quotes default to expiring 30 days out; the rep can still edit it per quote.
+function defaultQuoteExpirationDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return formatDateInput(d);
 }
 
 // --- pricing data (Google-auth-gated) ---
@@ -59,7 +95,7 @@ async function fetchPricingData(idToken) {
   );
 
   if (responses.some((res) => res.status === 401 || res.status === 403)) {
-    const err = new Error("Your Google account isn't authorized to view pricing.");
+    const err = new Error("Your Google account isn't <a href=\"https://n8n.californiamobility.com/workflow/ZBPvOf0Se3qv5WM3/ab615d\" target=\"_blank\">authorized</a> to view pricing.");
     err.code = "unauthorized";
     throw err;
   }
@@ -77,6 +113,97 @@ async function fetchPricingData(idToken) {
   };
 }
 
+// --- local dev auth bypass ---
+// Skips the Google Sign-In click during local development, on this computer
+// (localhost) and on a phone hitting this computer's LAN IP over wifi, since
+// Google Identity Services is registered against specific origins (see
+// HANDOFF.md) and a phone's LAN-IP origin isn't one of them. Two things must
+// both be true before this ever activates, so it can't fire in production
+// (served from a public IP/domain, never localhost or a private LAN address):
+//   1. isLocalDevHost() — the page's own hostname is localhost or an RFC1918
+//      private address.
+//   2. dev-auth.local.js exists next to this file and defines
+//      window.__CPQ_DEV_AUTH__.password. That file is gitignored, never
+//      committed, so the password never ships in source anyone could view on
+//      the live site; it only exists on a machine where a developer created
+//      it. Copy dev-auth.local.js.example to create one.
+// The static dev server has no auth of its own, so anyone else on the same
+// wifi who found/guessed that file's URL while it's running could read the
+// password too. Fine for a trusted home/office network during dev, not a
+// substitute for real auth anywhere else.
+function isLocalDevHost(hostname) {
+  if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname);
+}
+
+const DEV_BYPASS_CANDIDATE = isLocalDevHost(window.location.hostname);
+
+function loadDevAuthConfig() {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "./dev-auth.local.js";
+    script.onload = () => resolve(window.__CPQ_DEV_AUTH__ || null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+}
+
+async function fetchPricingDataWithDevPassword(password) {
+  const responses = await Promise.all(
+    PRICING_SHEETS.map((sheet) =>
+      fetch(`${PRICING_URL}?sheet=${sheet}&p=${encodeURIComponent(password)}`),
+    ),
+  );
+
+  if (responses.some((res) => res.status === 401 || res.status === 403)) {
+    const err = new Error("Dev bypass password was <a href=\"https://n8n.californiamobility.com/workflow/ZBPvOf0Se3qv5WM3/ab615d\" target=\"_blank\">rejected</a> by the pricing service.");
+    err.code = "unauthorized";
+    throw err;
+  }
+  if (responses.some((res) => !res.ok)) {
+    const err = new Error("Could not reach the pricing service. Please try again.");
+    err.code = "unavailable";
+    throw err;
+  }
+
+  const [products, options, packages] = await Promise.all(responses.map((res) => res.json()));
+  return {
+    products: products.products || [],
+    options: options.options || [],
+    packages: packages.packages || [],
+  };
+}
+
+async function authenticateWithDevBypass(password) {
+  state.authLoading = true;
+  state.authError = null;
+  render();
+  try {
+    const raw = await fetchPricingDataWithDevPassword(password);
+    const data = normalizePricingData(raw);
+    state.products = data.products;
+    state.addons = data.addons;
+    state.productCategories = data.productCategories;
+    state.addonCategories = data.addonCategories;
+    state.packages = data.packages;
+    state.authed = true;
+    state.devBypass = true;
+    state.userEmail = null;
+    state.userName = "Local dev";
+    resolveInitialStep();
+    console.warn("[dev-auth] Google sign-in bypassed via dev-auth.local.js; not a verified session.");
+  } catch (e) {
+    state.authError =
+      e.code === "unauthorized"
+        ? e.message + " Check the password in dev-auth.local.js."
+        : "Could not reach the pricing service. Please try again.";
+  } finally {
+    state.authLoading = false;
+    state.checkingGoogleSession = false;
+    render();
+  }
+}
+
 // --- HubSpot deal search (used by the deal/product selection step) ---
 async function fetchDeals(search) {
   const url = `${HS_FETCH_URL}?fetch=deals&search=${encodeURIComponent(search)}`;
@@ -89,6 +216,22 @@ async function fetchDeals(search) {
   if (!text) return [];
   const data = JSON.parse(text);
   return Array.isArray(data.hs_deals) ? data.hs_deals : [];
+}
+
+// Looks up the contacts on a chosen deal, used to prefill/edit the ship-to
+// address (see loadContactsForDeal below). Same endpoint family as
+// fetchDeals, so it's assumed to have the same "no match -> 200 with an
+// empty body" behavior.
+async function fetchContactsForDeal(dealId) {
+  const url = `${HS_FETCH_URL}?fetch=contacts&search=${encodeURIComponent(dealId)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error("Could not load this deal's contacts.");
+  }
+  const text = await res.text();
+  if (!text) return [];
+  const data = JSON.parse(text);
+  return Array.isArray(data.contacts) ? data.contacts : [];
 }
 
 // While online, returning visitors are recognized by Google's own sign-in
@@ -206,6 +349,11 @@ function normalizePricingData(raw) {
     // compatible_base_product_skus lists product base_sku values, not full product skus
     parentBaseSkus: splitSkuList(o.compatible_base_product_skus),
     incompatible_skus: splitSkuList(o.incompatible_option_skus),
+    // comma-joined list of configuration choices, same convention as the
+    // other multi-value sheet columns above; empty when the add-on has no
+    // configuration choice at all
+    configurations: splitSkuList(o.configuration),
+    maxQuantity: Math.max(1, Math.floor(Number(o.max_quantity)) || 1),
   }));
 
   const packages = (raw.packages || []).map((pkg) => ({
@@ -234,6 +382,9 @@ const state = {
   // true only while attempting a silent Google sign-in on boot, so the login
   // form never flashes for a returning visitor; see boot section below.
   checkingGoogleSession: false,
+  // true when the local dev auth bypass (see "local dev auth bypass" above)
+  // signed us in instead of Google; never true in production.
+  devBypass: false,
   // set once authed, from the Google ID token's own claims; display only.
   userEmail: null,
   userName: null,
@@ -257,14 +408,37 @@ const state = {
   // holds the ?hs_deal_id= value when the auto-lookup found no match
   dealIdNotFound: null,
 
+  // contacts on the selected deal, fetched once a deal is chosen (see
+  // loadContactsForDeal), used to prefill/edit the ship-to address below.
+  // Empty whenever no deal is selected, or the deal has no contacts.
+  contacts: [],
+  contactsLoading: false,
+  contactsError: null,
+  selectedContactId: null,
+  // editable ship-to address, prefilled from the selected contact
+  // (applyContactToShipTo) but editable independent of it; sent with the
+  // HubSpot push so n8n can write it back onto that contact.
+  shipTo: { firstName: "", lastName: "", street: "", city: "", state: "", zip: "" },
+
   productSku: null,
   addonSkus: new Set(),
+  // sku -> selected configuration string (only relevant for add-ons with 2+
+  // configurations); sku -> raw typed quantity string (only relevant for
+  // add-ons with max_quantity > 1), see getAddonConfiguration/getAddonQuantity
+  addonConfig: new Map(),
+  addonQty: new Map(),
   openProductCat: null,
   openAddonCat: null,
   productSearchQuery: "",
   addonSearchQuery: "",
   discountType: "$",
   discountValue: "",
+  // freeform comment sent in the main push-to-hubspot body, separate from
+  // the send-quote-email note above
+  quoteComment: "",
+  // yyyy-mm-dd, defaults to 30 days out at page load (see
+  // defaultQuoteExpirationDate), editable from there
+  quoteExpirationDate: defaultQuoteExpirationDate(),
   quoteLink: null,
   dealLink: null,
   quoteLoading: false,
@@ -313,6 +487,29 @@ function getSelectedAddons() {
   return state.addons.filter((a) => state.addonSkus.has(a.sku));
 }
 
+// Falls back to the first available configuration when none has been
+// explicitly chosen yet, so a push to HubSpot always carries a real value
+// instead of blank, same fallback pattern used for packages/defaults elsewhere.
+function getAddonConfiguration(addon) {
+  if (!addon.configurations.length) return null;
+  return state.addonConfig.get(addon.sku) || addon.configurations[0];
+}
+
+// The stored value is the raw typed string (see setAddonQuantity), not yet
+// clamped to [1, maxQuantity]; this is what pricing/the HubSpot push use.
+function getAddonQuantity(addon) {
+  const n = Math.round(Number(state.addonQty.get(addon.sku)));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, addon.maxQuantity || 1);
+}
+
+// What the quantity <input> itself displays: the raw typed string, so typing
+// isn't fought by a clamped value re-rendering over it mid-keystroke (same
+// reasoning as state.discountValue).
+function getAddonQuantityInputValue(addon) {
+  return state.addonQty.get(addon.sku) ?? "1";
+}
+
 // Collapses case and punctuation differences (spaces, hyphens, etc.) so a
 // search for "cre 2110" matches a SKU like "cre-2110" and vice versa.
 function normalizeForSearch(str) {
@@ -348,7 +545,21 @@ function syncAddonsToProduct() {
 }
 
 // --- actions ---
-async function authenticateWithGoogle(idToken) {
+// `isStoredSessionReplay` is true only when this call came from replaying
+// the localStorage-cached token on boot (see GOOGLE_SESSION_STORAGE_KEY
+// above), not from an explicit Google button click. A 401 on that path is
+// almost always just the cached token's normal ~1hr expiry, not a genuinely
+// unauthorized account, since an unauthorized account would never have been
+// able to store a session in the first place, so instead of showing an
+// "isn't authorized" error and waiting on a click, just reload straight into
+// a clean sign-in screen, the same effect as the manual refresh a visitor
+// would otherwise reach for. clearStoredGoogleSession() below already runs
+// before the reload, so the next boot has no stored session to replay and
+// won't loop, it lands on the plain "Sign in with Google" button. An
+// explicit button click that comes back 401 is a fresh account pick, so
+// that one really can be a genuinely unauthorized account, keep showing
+// that message instead of reloading.
+async function authenticateWithGoogle(idToken, isStoredSessionReplay = false) {
   state.authLoading = true;
   state.authError = null;
   render();
@@ -374,6 +585,10 @@ async function authenticateWithGoogle(idToken) {
       window.google?.accounts?.id?.disableAutoSelect();
       clearStoredGoogleSession();
     }
+    if (e.code === "unauthorized" && isStoredSessionReplay) {
+      window.location.reload();
+      return;
+    }
     state.authError =
       e.code === "unauthorized" || e.code === "unavailable"
         ? e.message
@@ -388,6 +603,13 @@ async function authenticateWithGoogle(idToken) {
 // Clears the app's own session and tells Google not to silently sign this
 // browser back in on the next load; the explicit button reappears instead.
 function signOut() {
+  if (state.devBypass) {
+    // Google was never initialized on this boot path (see DEV_BYPASS_CANDIDATE
+    // below), so there's no button state to reset here; reloading just
+    // re-runs the same dev bypass check from scratch.
+    window.location.reload();
+    return;
+  }
   window.google?.accounts?.id?.disableAutoSelect();
   clearStoredGoogleSession();
   state.authed = false;
@@ -402,6 +624,10 @@ function signOut() {
   state.step = "deal-select";
   state.selectedDeal = null;
   state.dealIdNotFound = null;
+  state.contacts = [];
+  state.contactsError = null;
+  state.selectedContactId = null;
+  applyContactToShipTo(null);
   // maybeAutoLookupDeal() only ever runs its ?hs_deal_id= lookup once per
   // page load (dealAutoLookupAttempted guards against re-fetching on every
   // render); resetting it here lets a fresh sign-in resolve the deal again
@@ -433,6 +659,51 @@ function applyPackageSelection(pkg) {
   syncAddonsToProduct();
 }
 
+// Prefills the editable ship-to address from a HubSpot contact; called with
+// `null` when no contact is selected (no deal, or the deal has no
+// contacts), which just blanks the address out.
+function applyContactToShipTo(contact) {
+  state.shipTo = {
+    firstName: contact?.firstname || "",
+    lastName: contact?.lastname || "",
+    street: contact?.address_street || "",
+    city: contact?.address_city || "",
+    state: contact?.address_state || "",
+    zip: contact?.address_zip || "",
+  };
+}
+
+// Fetches the contacts on a deal once it's chosen, so the ship-to address
+// (see shipToSectionHtml) can be prefilled from one of them. Fired off from
+// chooseDeal, not awaited there, since it shouldn't block getting to the CPQ
+// layout.
+async function loadContactsForDeal(dealId) {
+  state.contactsLoading = true;
+  state.contactsError = null;
+  render();
+  try {
+    const contacts = await fetchContactsForDeal(dealId);
+    state.contacts = contacts;
+    state.selectedContactId = contacts.length ? contacts[0].hs_contact_id : null;
+    applyContactToShipTo(contacts[0] || null);
+  } catch (e) {
+    state.contacts = [];
+    state.selectedContactId = null;
+    state.contactsError = e.message || "Could not load this deal's contacts.";
+    applyContactToShipTo(null);
+  } finally {
+    state.contactsLoading = false;
+    render();
+  }
+}
+
+function selectContact(contactId) {
+  state.selectedContactId = contactId;
+  applyContactToShipTo(state.contacts.find((c) => c.hs_contact_id === contactId) || null);
+  state.pricingDirty = true;
+  render();
+}
+
 function chooseDeal(deal) {
   state.selectedDeal = deal;
   const pkg = findPackageForDeal(deal);
@@ -440,6 +711,7 @@ function chooseDeal(deal) {
   state.dealMatchFailed = !pkg;
   state.step = "cpq";
   setDealIdInUrl(deal.hs_object_id);
+  loadContactsForDeal(deal.hs_object_id);
   render();
 }
 
@@ -447,6 +719,11 @@ function skipToPriceLookup() {
   state.selectedDeal = null;
   state.dealMatchFailed = false;
   state.step = "cpq";
+  state.contacts = [];
+  state.contactsLoading = false;
+  state.contactsError = null;
+  state.selectedContactId = null;
+  applyContactToShipTo(null);
   render();
 }
 
@@ -467,7 +744,7 @@ function setDealSearchQuery(value) {
 
   state.dealSearchLoading = true;
   render();
-  dealSearchDebounceHandle = setTimeout(() => runDealSearch(trimmed), 300);
+  dealSearchDebounceHandle = setTimeout(() => runDealSearch(trimmed), SEARCH_DEBOUNCE_MS);
 }
 
 async function runDealSearch(term) {
@@ -581,6 +858,35 @@ function clearAddons() {
   render();
 }
 
+function setAddonConfiguration(sku, value) {
+  state.addonConfig.set(sku, value);
+  state.pricingDirty = true;
+  renderPicker();
+  renderSummary();
+}
+
+function setAddonQuantity(sku, value) {
+  // Keep only digits, same "sanitize but don't clamp" approach as
+  // setDiscountValue; clamping to [1, maxQuantity] happens at read time
+  // (getAddonQuantity), not here, so the field isn't fought while typing.
+  state.addonQty.set(sku, String(value).replace(/[^\d]/g, ""));
+  state.pricingDirty = true;
+  renderPicker();
+  renderSummary();
+}
+
+function incAddonQuantity(sku) {
+  const addon = state.addons.find((a) => a.sku === sku);
+  if (!addon) return;
+  setAddonQuantity(sku, Math.min(getAddonQuantity(addon) + 1, addon.maxQuantity || 1));
+}
+
+function decAddonQuantity(sku) {
+  const addon = state.addons.find((a) => a.sku === sku);
+  if (!addon) return;
+  setAddonQuantity(sku, Math.max(getAddonQuantity(addon) - 1, 1));
+}
+
 function toggleProductCat(cat) {
   state.openProductCat = state.openProductCat === cat ? null : cat;
   render();
@@ -591,14 +897,25 @@ function toggleAddonCat(cat) {
   render();
 }
 
+// Filtering the picker is the one thing typing in these two fields actually
+// needs to show live, and even that doesn't need to happen on every
+// keystroke — debounced (SEARCH_DEBOUNCE_MS) after typing stops, same
+// debounce-a-cheap-render idea as runDealSearch's network debounce above,
+// just without a network call behind it.
+let productSearchDebounceHandle = null;
+
 function setProductSearchQuery(value) {
   state.productSearchQuery = value;
-  render();
+  if (productSearchDebounceHandle) clearTimeout(productSearchDebounceHandle);
+  productSearchDebounceHandle = setTimeout(renderPicker, SEARCH_DEBOUNCE_MS);
 }
+
+let addonSearchDebounceHandle = null;
 
 function setAddonSearchQuery(value) {
   state.addonSearchQuery = value;
-  render();
+  if (addonSearchDebounceHandle) clearTimeout(addonSearchDebounceHandle);
+  addonSearchDebounceHandle = setTimeout(renderPicker, SEARCH_DEBOUNCE_MS);
 }
 
 function setDiscountType(type) {
@@ -615,7 +932,45 @@ function setDiscountValue(value) {
     .replace(/(\..*)\./g, "$1");
   state.discountValue = sanitized;
   state.pricingDirty = true;
+  renderSummary();
+}
+
+// Nothing else on screen reflects the comment live, so there's nothing to
+// re-render on every keystroke — state.quoteComment is only read at push
+// time. The textarea's own auto-grow still needs to run per keystroke, but
+// that's a direct height tweak on the existing node, not a rebuild (see
+// autoGrowCommentTextarea). A single reconciling renderSummary() on blur
+// (below, in the focusout listener) catches up anything else that depends on
+// state.pricingDirty, e.g. the "already pushed" push-button state.
+function setQuoteComment(value) {
+  state.quoteComment = value;
+  state.pricingDirty = true;
+  autoGrowCommentTextarea();
+}
+
+function setQuoteExpirationDate(value) {
+  state.quoteExpirationDate = value;
+  state.pricingDirty = true;
   render();
+}
+
+function setShipToField(field, value) {
+  // ZIP is digits-only and capped at 5, so typing a 6th digit (or any
+  // letter) is simply rejected rather than accepted and flagged after the
+  // fact; isZipValid() below still covers the 1-4 digit "incomplete" case,
+  // which can't be blocked at typing time without stopping the user
+  // mid-entry.
+  // Same reasoning as setQuoteComment above: nothing else on screen reflects
+  // these fields live (not even the zip-format error message, which is fine
+  // to only settle on blur rather than flicker while a valid zip is still
+  // being typed one digit at a time), so no re-render here — see the
+  // reconciling renderSummary() on blur in the focusout listener below.
+  state.shipTo[field] = field === "zip" ? value.replace(/[^\d]/g, "").slice(0, 5) : value;
+  state.pricingDirty = true;
+}
+
+function isZipValid() {
+  return state.shipTo.zip === "" || /^\d{5}$/.test(state.shipTo.zip);
 }
 
 function toggleMargin() {
@@ -649,15 +1004,19 @@ async function handlePushToHubspot() {
   };
 
   const options = selectedAddons.map((a) => {
-    const cost = a.unit_cost || 0;
+    const quantity = getAddonQuantity(a);
+    const price = (a.unit_price || 0) * quantity;
+    const cost = (a.unit_cost || 0) * quantity;
     return {
       name: a.name,
       description: a.customerDescription,
       sku: a.sku,
-      price: a.unit_price,
+      quantity,
+      configuration: getAddonConfiguration(a) || "",
+      price,
       cost,
       // combined-cost 10% (like the product) plus the extra 10%-of-price quirk on add-ons
-      tax_amount: roundToCent(cost * 0.1 + a.unit_price * 0.1),
+      tax_amount: roundToCent(cost * 0.1 + price * 0.1),
     };
   });
 
@@ -700,6 +1059,17 @@ async function handlePushToHubspot() {
         tax_location: "12345",
         currency: "USD",
         total,
+        comment: state.quoteComment.trim(),
+        quote_expiration_date: state.quoteExpirationDate,
+        ship_to: {
+          hs_contact_id: state.selectedContactId,
+          first_name: state.shipTo.firstName.trim(),
+          last_name: state.shipTo.lastName.trim(),
+          street: state.shipTo.street.trim(),
+          city: state.shipTo.city.trim(),
+          state: state.shipTo.state.trim(),
+          zip: state.shipTo.zip.trim(),
+        },
       }),
     });
     const data = await res.json();
@@ -862,7 +1232,7 @@ function loginSectionHtml() {
             ? `<div class="panel__loading"><span class="spinner" aria-hidden="true"></span>Signing you in…</div>`
             : `<div id="google-signin-button"></div>`
         }
-        ${state.authError ? `<p class="form-error">${escapeHtml(state.authError)}</p>` : ""}
+        ${state.authError ? `<p class="form-error">${state.authError}</p>` : ""}
       </div>
     </div>
   `;
@@ -925,7 +1295,7 @@ function dealSelectSectionHtml() {
 
       <div class="stack-3">
         <div>
-          <input type="text" id="deal-search-input" data-action="set-deal-search" autocomplete="off"
+          <input type="text" id="deal-search-input" data-action="set-deal-search" ${FIELD_NO_AUTOFILL_ATTRS}
             class="input input--block" placeholder="Search by deal name or record ID…"
             value="${escapeHtml(state.dealSearchQuery)}" />
           ${resultsHtml}
@@ -967,12 +1337,12 @@ function optionCardHtml({ sku, title, description, price, selected, disabled, ac
   `;
 }
 
-function checkboxCardHtml({ sku, title, description, price, checked, disabled }) {
+function checkboxCardHtml({ sku, title, description, price, checked, disabled, extrasHtml }) {
   const check = `
     <svg class="option-card__check-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
       <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
     </svg>`;
-  return `
+  const button = `
     <button type="button" data-action="toggle-addon" data-sku="${escapeHtml(sku)}"
       ${disabled ? "disabled" : ""}
       class="${classNames(
@@ -997,6 +1367,52 @@ function checkboxCardHtml({ sku, title, description, price, checked, disabled })
       </div>
     </button>
   `;
+  // extrasHtml (configuration select / quantity stepper) is a sibling of the
+  // button, not nested inside it — a <select>/<input> nested inside a
+  // <button> is invalid HTML and the outer button would swallow their clicks.
+  if (!extrasHtml) return button;
+  return `<div class="option-card-group">${button}${extrasHtml}</div>`;
+}
+
+// Configuration select + quantity stepper shown under a checked add-on card,
+// only when that add-on actually has something to choose (2+ configurations
+// and/or a max_quantity > 1); otherwise the card renders with no extras at all.
+function addonExtrasHtml(addon) {
+  const configHtml =
+    addon.configurations.length > 1
+      ? `
+    <div class="addon-extra__row">
+      <span class="addon-extra__label">Configuration</span>
+      <select class="input addon-extra__select" data-action="set-addon-config" data-sku="${escapeHtml(addon.sku)}" ${FIELD_NO_AUTOFILL_ATTRS}>
+        ${addon.configurations
+          .map(
+            (c) =>
+              `<option value="${escapeHtml(c)}" ${getAddonConfiguration(addon) === c ? "selected" : ""}>${escapeHtml(c)}</option>`,
+          )
+          .join("")}
+      </select>
+    </div>`
+      : "";
+
+  const quantity = getAddonQuantity(addon);
+  const qtyHtml =
+    addon.maxQuantity > 1
+      ? `
+    <div class="addon-extra__row">
+      <span class="addon-extra__label">Quantity</span>
+      <div class="qty-stepper">
+        <button type="button" data-action="dec-addon-qty" data-sku="${escapeHtml(addon.sku)}"
+          aria-label="Decrease quantity" ${quantity <= 1 ? "disabled" : ""}>&minus;</button>
+        <input type="text" inputmode="numeric" class="qty-stepper__input"
+          data-action="set-addon-qty" data-sku="${escapeHtml(addon.sku)}" ${FIELD_NO_AUTOFILL_ATTRS}
+          value="${escapeHtml(getAddonQuantityInputValue(addon))}" />
+        <button type="button" data-action="inc-addon-qty" data-sku="${escapeHtml(addon.sku)}"
+          aria-label="Increase quantity" ${quantity >= addon.maxQuantity ? "disabled" : ""}>&plus;</button>
+      </div>
+    </div>`
+      : "";
+
+  return `<div class="addon-extra">${configHtml}${qtyHtml}</div>`;
 }
 
 function accordionSectionHtml({ title, count, isOpen, toggleAction, cat, bodyHtml }) {
@@ -1019,7 +1435,7 @@ function accordionSectionHtml({ title, count, isOpen, toggleAction, cat, bodyHtm
 
 function searchInputHtml({ id, action, value, placeholder, disabled }) {
   return `
-    <input type="search" id="${id}" data-action="${action}" autocomplete="off"
+    <input type="search" id="${id}" data-action="${action}" ${FIELD_NO_AUTOFILL_ATTRS}
       class="input input--block panel__search" placeholder="${escapeHtml(placeholder)}"
       value="${escapeHtml(value)}" ${disabled ? "disabled" : ""} />
   `;
@@ -1115,12 +1531,18 @@ function addonSectionHtml() {
           .map((a) => {
             const isChecked = state.addonSkus.has(a.sku);
             const isDisabled = !isChecked && incompatibleSkuSet.has(a.sku);
+            const hasExtras = isChecked && (a.configurations.length > 1 || a.maxQuantity > 1);
             return checkboxCardHtml({
               sku: a.sku,
               title: a.name,
-              price: a.unit_price,
+              // Quantity only ever means something once the add-on is
+              // actually selected; an unchecked card always shows the plain
+              // per-unit price, even if a stale quantity is still stored
+              // from a previous selection.
+              price: isChecked ? a.unit_price * getAddonQuantity(a) : a.unit_price,
               checked: isChecked,
               disabled: isDisabled,
+              extrasHtml: hasExtras ? addonExtrasHtml(a) : "",
             });
           })
           .join("");
@@ -1165,6 +1587,115 @@ function addonSectionHtml() {
   `;
 }
 
+// Contact picker + editable ship-to address, only shown once a deal is
+// selected (contacts are fetched per-deal, see loadContactsForDeal). Editing
+// the address fields doesn't call HubSpot itself, they're only sent along
+// with the rest of the quote on "Push to HubSpot" (see handlePushToHubspot),
+// which is what actually writes them back onto the selected contact.
+function shipToSectionHtml() {
+  if (!state.selectedDeal) return "";
+
+  const selectedContact =
+    state.contacts.find((c) => c.hs_contact_id === state.selectedContactId) || null;
+
+  let statusHtml = "";
+  if (state.contactsLoading) {
+    statusHtml = `<div class="panel__loading"><span class="spinner" aria-hidden="true"></span>Loading contacts…</div>`;
+  } else if (state.contactsError) {
+    statusHtml = `<p class="form-error">${escapeHtml(state.contactsError)}</p>`;
+  } else if (state.contacts.length === 0) {
+    statusHtml = `<p class="muted-text">No HubSpot contact found on this deal — this address is quote-only and won't sync to HubSpot.</p>`;
+  }
+
+  const contactLabel = (c) => {
+    const name = [c.firstname, c.lastname].filter(Boolean).join(" ");
+    return name ? (c.email ? `${name} (${c.email})` : name) : c.email || c.hs_contact_id;
+  };
+
+  const contactPickerHtml =
+    state.contacts.length > 1
+      ? `
+    <div>
+      <label class="field-label" for="ship-to-contact-select">Contact</label>
+      <select id="ship-to-contact-select" data-action="select-ship-to-contact" class="input input--block" ${FIELD_NO_AUTOFILL_ATTRS}>
+        ${state.contacts
+          .map(
+            (c) => `<option value="${escapeHtml(c.hs_contact_id)}" ${
+              state.selectedContactId === c.hs_contact_id ? "selected" : ""
+            }>${escapeHtml(contactLabel(c))}</option>`,
+          )
+          .join("")}
+      </select>
+    </div>`
+      : state.contacts.length === 1
+        ? `
+    <div>
+      <span class="field-label">Contact</span>
+      <p class="ship-to__contact-display">${escapeHtml(contactLabel(state.contacts[0]))}</p>
+    </div>`
+        : "";
+
+  const hubspotNoteHtml = selectedContact
+    ? `<p class="muted-text ship-to__hubspot-note">Editing this address will update the contact in HubSpot.</p>`
+    : "";
+
+  const field = (key, label, extraAttrs = "", errorHtml = "") => `
+    <div>
+      <div class="ship-to__field">
+        <label class="ship-to__field-label" for="ship-to-${key}">${label}</label>
+        <input type="text" id="ship-to-${key}" data-action="set-ship-to-field" data-field="${key}"
+          class="input ship-to__field-input" value="${escapeHtml(state.shipTo[key])}" ${FIELD_NO_AUTOFILL_ATTRS} ${extraAttrs} />
+      </div>
+      ${errorHtml}
+    </div>
+  `;
+
+  const zipErrorHtml = isZipValid() ? "" : `<p class="ship-to__error">Zip must be 5 digits.</p>`;
+
+  return `
+    <div class="ship-to">
+      <h3 class="subsection-title">Install Address</h3>
+      ${statusHtml}
+      ${contactPickerHtml}
+      ${hubspotNoteHtml}
+      ${field("street", "Street")}
+      ${field("city", "City")}
+      ${field("state", "State")}
+      ${field("zip", "Zip", `maxlength="5" inputmode="numeric"`, zipErrorHtml)}
+    </div>
+  `;
+}
+
+// Comment + expiration date, plus the ship-to block; hidden entirely without
+// a selected deal, same reasoning as shipToSectionHtml() above, there's no
+// quote to attach these details to on a skip-straight-to-price-lookup quote.
+function quoteDetailsHtml() {
+  if (!state.selectedDeal) return "";
+  return `
+    <div class="quote-details">
+      <div class="quote-details__columns">
+        <div class="quote-details__col">
+          <h3 class="subsection-title">Quote Details</h3>
+          <div>
+            <label class="field-label" for="quote-expiration-date">Expiration date</label>
+            <input type="text" id="quote-expiration-date" readonly ${FIELD_NO_AUTOFILL_ATTRS}
+              class="input input--block" value="${escapeHtml(state.quoteExpirationDate)}" />
+          </div>
+          <div>
+            <label class="field-label" for="quote-comment">Comment</label>
+            <textarea id="quote-comment" data-action="set-quote-comment" ${FIELD_NO_AUTOFILL_ATTRS}
+              class="input input--block textarea textarea--autogrow" rows="2"
+              placeholder="Optional comment shown on the quote">${escapeHtml(state.quoteComment)}</textarea>
+          </div>
+        </div>
+        <div class="quote-details__col">
+          ${shipToSectionHtml()}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function summarySectionHtml() {
   const selectedProduct = getSelectedProduct();
   const selectedAddons = getSelectedAddons();
@@ -1179,18 +1710,26 @@ function summarySectionHtml() {
           sku: selectedProduct.sku,
         }]
       : []),
-    ...selectedAddons.map((a) => ({
-      name: a.name,
-      price: a.unit_price,
-      cost: a.unit_cost,
-      sku: a.sku,
-      addon: true,
-    })),
+    ...selectedAddons.map((a) => {
+      const qty = getAddonQuantity(a);
+      const config = getAddonConfiguration(a);
+      return {
+        name: a.name,
+        description: config ? `Configuration: ${config}` : "",
+        price: a.unit_price * qty,
+        cost: a.unit_cost * qty,
+        sku: a.sku,
+        addon: true,
+        qty,
+      };
+    }),
   ];
 
   const subtotal = lineItems.reduce((s, item) => s + Number(item.price || 0), 0);
   const cost = lineItems.reduce((s, item) => s + Number(item.cost || 0), 0);
-  const tax = cost * 0.1 + selectedAddons.reduce((s, a) => s + Number(a.unit_price || 0) * 0.1, 0);
+  const tax =
+    cost * 0.1 +
+    selectedAddons.reduce((s, a) => s + Number(a.unit_price || 0) * getAddonQuantity(a) * 0.1, 0);
   const rawDiscount = Number(state.discountValue || 0);
   const discountAmount =
     state.discountType === "$"
@@ -1219,7 +1758,7 @@ function summarySectionHtml() {
             (item) => `
           <div class="${classNames("line-item", item.addon && "line-item--addon")}">
             <div class="line-item__body">
-              <div class="line-item__name">${escapeHtml(item.name)}</div>
+              <div class="line-item__name">${escapeHtml(item.name)}${item.qty > 1 ? ` <span class="line-item__qty">× ${item.qty}</span>` : ""}</div>
               ${item.description ? `<div class="line-item__desc">${escapeHtml(item.description)}</div>` : ""}
             </div>
             ${showCostColumn ? `<div class="line-item__cost">${item.cost > 0 ? currencyWhole.format(item.cost) : "—"}</div>` : ""}
@@ -1310,7 +1849,7 @@ function summarySectionHtml() {
             </div>
             <input type="text" inputmode="decimal" id="discount-value-input"
               data-action="set-discount-value" value="${escapeHtml(state.discountValue)}"
-              class="input input--discount"
+              class="input input--discount" ${FIELD_NO_AUTOFILL_ATTRS}
               placeholder="0" />
           </div>
         </div>
@@ -1336,6 +1875,8 @@ function summarySectionHtml() {
           <span class="totals__amount">${currency.format(total)}</span>
         </div>
       </div>
+
+      ${quoteDetailsHtml()}
 
       <div class="summary__actions">
         <div class="summary__actions-top">
@@ -1400,7 +1941,7 @@ function quoteEmailChipInputHtml() {
     <div class="chip-input" data-action="focus-quote-email-draft">
       ${chipsHtml}
       <input type="text" id="quote-email-draft" data-action="set-quote-email-draft"
-        class="chip-input__field" autocomplete="off"
+        class="chip-input__field" ${FIELD_NO_AUTOFILL_ATTRS}
         placeholder="${state.quoteEmailChips.length ? "" : "name@example.com, other@example.com"}"
         value="${escapeHtml(state.quoteEmailDraft)}" ${state.quoteEmailSending ? "disabled" : ""} />
     </div>
@@ -1432,13 +1973,13 @@ function quoteEmailFormContentHtml() {
       <div>
         <label class="field-label" for="quote-email-subject">Subject</label>
         <input type="text" id="quote-email-subject" data-action="set-quote-email-subject"
-          class="input input--block" value="${escapeHtml(state.quoteEmailSubject)}"
+          class="input input--block" value="${escapeHtml(state.quoteEmailSubject)}" ${FIELD_NO_AUTOFILL_ATTRS}
           ${state.quoteEmailSending ? "disabled" : ""} />
       </div>
       <div>
         <label class="field-label" for="quote-email-note">Note</label>
         <textarea id="quote-email-note" data-action="set-quote-email-note"
-          class="input input--block textarea" rows="3"
+          class="input input--block textarea" rows="3" ${FIELD_NO_AUTOFILL_ATTRS}
           placeholder="Let me know if you want any changes!"
           ${state.quoteEmailSending ? "disabled" : ""}>${escapeHtml(state.quoteEmailNote)}</textarea>
       </div>
@@ -1534,23 +2075,36 @@ function appHtml() {
   }
   return `
     ${dealBannerHtml()}
-    <div class="layout-grid">
+    <div class="layout-grid" id="picker-root">
       ${productSectionHtml()}
       ${addonSectionHtml()}
     </div>
-    ${summarySectionHtml()}
+    <div id="summary-root">
+      ${summarySectionHtml()}
+    </div>
   `;
 }
 
 // --- render loop with focus preservation ---
 const root = document.getElementById("app");
 const headerUserMenuEl = document.getElementById("header-user-menu");
+const devBypassBannerEl = document.getElementById("dev-bypass-banner");
 
 // Kept separate from render()'s #app replacement so opening/closing the
 // menu (or a state change elsewhere) doesn't need to re-render the whole
 // app just to keep the header in sync.
 function renderHeaderUserMenu() {
   headerUserMenuEl.innerHTML = headerUserMenuHtml();
+}
+
+// See "local dev auth bypass" above. Kept separate from #app for the same
+// reason as the header user menu, and so it's visible even on the login
+// screen, before state.authed flips true.
+function renderDevBypassBanner() {
+  devBypassBannerEl.style.display = state.devBypass ? "block" : "none";
+  devBypassBannerEl.textContent = state.devBypass
+    ? "Local dev: Google SSO bypassed via dev-auth.local.js."
+    : "";
 }
 
 function captureFocus(container = root) {
@@ -1679,6 +2233,18 @@ function restorePanelScroll(saved) {
   });
 }
 
+// Grows the comment textarea to fit its content instead of scrolling
+// internally: reset to "auto" first so scrollHeight reflects a shrink too
+// (deleting a wrapped line), not just its previous, already-grown height.
+// #app's innerHTML is fully replaced on every render, so this has to re-run
+// after every render, not just on this field's own input event.
+function autoGrowCommentTextarea() {
+  const el = document.getElementById("quote-comment");
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 // Google Identity Services attaches its button to a live DOM node rather
 // than accepting an HTML string, so it can't be part of appHtml() like
 // everything else; render it into the placeholder loginSectionHtml() left
@@ -1698,15 +2264,123 @@ function renderGoogleButton() {
   });
 }
 
+// The native <input type="date"> couldn't be restyled (it's browser/OS
+// chrome, not something CSS can reach), so the expiration date field is a
+// plain readonly text input driven by Flatpickr (vendored locally under
+// ./vendor/, no CDN dependency, so it still works offline) for an on-brand
+// calendar dropdown instead — see the flatpickr-* overrides in styles.css.
+// Same reason as renderGoogleButton() above: #app's innerHTML is fully
+// replaced on every render, which would leave a stale instance pointing at
+// a detached input, so the old instance is torn down and a fresh one
+// attached after every re-render.
+let expirationDatePicker = null;
+
+function renderExpirationDatePicker() {
+  expirationDatePicker?.destroy();
+  expirationDatePicker = null;
+  const el = document.getElementById("quote-expiration-date");
+  if (!el || !window.flatpickr) return;
+  expirationDatePicker = window.flatpickr(el, {
+    dateFormat: "Y-m-d",
+    // altInput shows a friendlier "Jan 4, 2027" format while the original
+    // (now hidden) input, and the onChange dateStr below, stay in the
+    // Y-m-d form state.quoteExpirationDate/the HubSpot push expect.
+    altInput: true,
+    altFormat: "M j, Y",
+    altInputClass: "input input--block",
+    defaultDate: state.quoteExpirationDate || undefined,
+    minDate: "today",
+    // Flatpickr swaps in the browser's native date input on touch devices
+    // by default, overriding the on-brand calendar this field exists to
+    // show in the first place (see the comment above this function).
+    disableMobile: true,
+    onChange: (_dates, dateStr) => setQuoteExpirationDate(dateStr),
+  });
+  // altInput doesn't inherit the original input's id, which would leave the
+  // "Expiration date" <label for="quote-expiration-date"> pointing at the
+  // now-hidden original instead of the visible field; move the id over.
+  if (expirationDatePicker.altInput) {
+    expirationDatePicker.input.removeAttribute("id");
+    expirationDatePicker.altInput.id = "quote-expiration-date";
+  }
+}
+
+// render()/renderPicker()/renderSummary() each only *schedule* their actual
+// rebuild for the next animation frame, coalescing repeated calls to the
+// same one within that frame into a single DOM rebuild. Without this, each
+// keystroke synchronously tore down and rebuilt whatever it was typed into
+// (innerHTML replacement, then refocus) — on a phone, typing faster than one
+// rebuild-and-refocus cycle could complete raced the keyboard's own
+// composition, dropping characters. state.* is already current by the time a
+// deferred rebuild runs, so nothing is lost, it just repaints less often.
+const scheduledRenders = new Set();
+
+function scheduleRender(key, fn) {
+  if (scheduledRenders.has(key)) return;
+  scheduledRenders.add(key);
+  requestAnimationFrame(() => {
+    scheduledRenders.delete(key);
+    fn();
+  });
+}
+
 function render() {
+  scheduleRender("app", renderNow);
+}
+
+function renderNow() {
   const saved = captureFocus();
   const savedScroll = capturePanelScroll();
   root.innerHTML = appHtml();
   restoreFocus(saved);
   restorePanelScroll(savedScroll);
+  autoGrowCommentTextarea();
   renderQuoteEmailModal();
   renderGoogleButton();
+  renderExpirationDatePicker();
   renderHeaderUserMenu();
+  renderDevBypassBanner();
+}
+
+// Typing in the product/add-on search boxes only changes productSectionHtml()/
+// addonSectionHtml()'s own output. Routing it through renderPicker() instead of
+// the full render() skips rebuilding summarySectionHtml() and dealBannerHtml()
+// on every keystroke there, which is pure waste since neither depends on the
+// search query.
+function renderPickerNow() {
+  const el = document.getElementById("picker-root");
+  if (!el) return;
+  const saved = captureFocus(el);
+  const savedScroll = capturePanelScroll();
+  el.innerHTML = `${productSectionHtml()}${addonSectionHtml()}`;
+  restoreFocus(saved);
+  restorePanelScroll(savedScroll);
+}
+
+function renderPicker() {
+  scheduleRender("picker", renderPickerNow);
+}
+
+// Typing in the Comment/ship-to/discount fields only changes
+// summarySectionHtml()'s own output, not the product/add-on catalog markup
+// rendered alongside it in appHtml() — which, for a real catalog's worth of
+// product/add-on cards, is the expensive part to re-serialize and reparse.
+// Rebuilding only #summary-root for those fields (see setQuoteComment/
+// setShipToField/setDiscountValue below) means a keystroke there no longer
+// touches that catalog markup at all, which batching render() to one rebuild
+// per frame didn't address on its own.
+function renderSummaryNow() {
+  const el = document.getElementById("summary-root");
+  if (!el) return;
+  const saved = captureFocus(el);
+  el.innerHTML = summarySectionHtml();
+  restoreFocus(saved);
+  autoGrowCommentTextarea();
+  renderExpirationDatePicker();
+}
+
+function renderSummary() {
+  scheduleRender("summary", renderSummaryNow);
 }
 
 // --- event delegation ---
@@ -1749,6 +2423,12 @@ document.addEventListener("click", (e) => {
       break;
     case "clear-addons":
       clearAddons();
+      break;
+    case "inc-addon-qty":
+      if (!el.hasAttribute("disabled")) incAddonQuantity(el.dataset.sku);
+      break;
+    case "dec-addon-qty":
+      if (!el.hasAttribute("disabled")) decAddonQuantity(el.dataset.sku);
       break;
     case "set-discount-type":
       setDiscountType(el.dataset.type);
@@ -1815,6 +2495,21 @@ document.addEventListener("input", (e) => {
   if (e.target.dataset.action === "set-addon-search") {
     setAddonSearchQuery(e.target.value);
   }
+  if (e.target.dataset.action === "set-addon-config") {
+    setAddonConfiguration(e.target.dataset.sku, e.target.value);
+  }
+  if (e.target.dataset.action === "set-addon-qty") {
+    setAddonQuantity(e.target.dataset.sku, e.target.value);
+  }
+  if (e.target.dataset.action === "set-quote-comment") {
+    setQuoteComment(e.target.value);
+  }
+  if (e.target.dataset.action === "set-ship-to-field") {
+    setShipToField(e.target.dataset.field, e.target.value);
+  }
+  if (e.target.dataset.action === "select-ship-to-contact") {
+    selectContact(e.target.value);
+  }
   if (e.target.dataset.action === "set-quote-email-draft") {
     setQuoteEmailDraft(e.target.value);
   }
@@ -1855,6 +2550,16 @@ document.addEventListener("focusout", (e) => {
       commitQuoteEmailDraft();
     }
   }, 0);
+});
+
+// setQuoteComment/setShipToField (above) skip re-rendering on every
+// keystroke; this catches the summary panel up once the user leaves either
+// field, so anything depending on state.pricingDirty or zip validity isn't
+// stuck showing what it looked like before they started typing.
+document.addEventListener("focusout", (e) => {
+  if (e.target.dataset.action === "set-quote-comment" || e.target.dataset.action === "set-ship-to-field") {
+    renderSummary();
+  }
 });
 
 window.addEventListener("keydown", (e) => {
@@ -1902,45 +2607,67 @@ function initGoogleAuth() {
   render();
 }
 
-const storedGoogleSession = loadStoredGoogleSession();
+function bootGoogleAuth() {
+  const storedGoogleSession = loadStoredGoogleSession();
 
-if (storedGoogleSession) {
-  // Skip Google's own sign-in flow (and its silent-sign-in prompt) entirely
-  // on a returning visit: replay the last verified ID token straight into
-  // authenticateWithGoogle() instead. While online, that token still gets
-  // fully re-verified by n8n on this call (see authenticateWithGoogle); an
-  // expired/rejected token just falls back to the explicit Google button
-  // below, same as a first-time visitor. While offline, there's no reaching
-  // n8n either, so the service worker's cache fallback serves the last
-  // successful pricing response, exactly like it always has for offline
-  // visits, see GOOGLE_SESSION_STORAGE_KEY above.
-  state.checkingGoogleSession = true;
-  render();
-  authenticateWithGoogle(storedGoogleSession.idToken);
+  if (storedGoogleSession) {
+    // Skip Google's own sign-in flow (and its silent-sign-in prompt) entirely
+    // on a returning visit: replay the last verified ID token straight into
+    // authenticateWithGoogle() instead. While online, that token still gets
+    // fully re-verified by n8n on this call (see authenticateWithGoogle); an
+    // expired/rejected token just falls back to the explicit Google button
+    // below, same as a first-time visitor. While offline, there's no reaching
+    // n8n either, so the service worker's cache fallback serves the last
+    // successful pricing response, exactly like it always has for offline
+    // visits, see GOOGLE_SESSION_STORAGE_KEY above.
+    state.checkingGoogleSession = true;
+    render();
+    authenticateWithGoogle(storedGoogleSession.idToken, true);
+  }
+
+  // Google Identity Services is still initialized in parallel (not only when
+  // there's no stored session) so the explicit "Sign in with Google" button
+  // is ready to use immediately if the stored-token replay above fails.
+  if (window.google?.accounts?.id) {
+    // Already loaded and executed by the time this line runs (e.g. cached,
+    // or this synchronous script happened to run after the async one).
+    initGoogleAuth();
+  } else {
+    // Deliberately NOT window's `load` event here — that waits for every
+    // resource on the page, including the header/favicon images pulled from
+    // HubSpot's CDN, which was adding multiple seconds before the sign-in
+    // button ever had a chance to appear. Waiting on this one script tag's
+    // own load/error event gets the button up as soon as Google's script
+    // itself is actually ready, nothing else on the page should hold it back.
+    const script = document.getElementById("google-identity-script");
+    if (script) {
+      script.addEventListener("load", initGoogleAuth, { once: true });
+      script.addEventListener("error", initGoogleAuth, { once: true });
+    } else {
+      // Shouldn't happen (the tag lives in index.html), but don't hang forever.
+      window.addEventListener("load", initGoogleAuth);
+    }
+  }
 }
 
-// Google Identity Services is still initialized in parallel (not only when
-// there's no stored session) so the explicit "Sign in with Google" button
-// is ready to use immediately if the stored-token replay above fails.
-if (window.google?.accounts?.id) {
-  // Already loaded and executed by the time this line runs (e.g. cached,
-  // or this synchronous script happened to run after the async one).
-  initGoogleAuth();
+// See "local dev auth bypass" above: on a candidate host, try the local dev
+// config before ever touching Google. If it's missing or has no password
+// (e.g. a teammate running the same static server without opting in), fall
+// straight back to the normal Google boot path below, nothing else changes.
+if (DEV_BYPASS_CANDIDATE) {
+  state.checkingGoogleSession = true;
+  render();
+  loadDevAuthConfig().then((config) => {
+    if (config && config.password) {
+      authenticateWithDevBypass(config.password);
+    } else {
+      state.checkingGoogleSession = false;
+      render();
+      bootGoogleAuth();
+    }
+  });
 } else {
-  // Deliberately NOT window's `load` event here — that waits for every
-  // resource on the page, including the header/favicon images pulled from
-  // HubSpot's CDN, which was adding multiple seconds before the sign-in
-  // button ever had a chance to appear. Waiting on this one script tag's
-  // own load/error event gets the button up as soon as Google's script
-  // itself is actually ready, nothing else on the page should hold it back.
-  const script = document.getElementById("google-identity-script");
-  if (script) {
-    script.addEventListener("load", initGoogleAuth, { once: true });
-    script.addEventListener("error", initGoogleAuth, { once: true });
-  } else {
-    // Shouldn't happen (the tag lives in index.html), but don't hang forever.
-    window.addEventListener("load", initGoogleAuth);
-  }
+  bootGoogleAuth();
 }
 
 if ("serviceWorker" in navigator) {

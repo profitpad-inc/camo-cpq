@@ -24,7 +24,7 @@ Camo CPQ is a small configure-price-quote tool. A user picks one product and any
        "price": 0, "cost": 0, "tax_amount": 0
      },
      "options": [
-       { "name": "...", "description": "...", "sku": "...", "price": 0, "cost": 0, "tax_amount": 0 }
+       { "name": "...", "description": "...", "sku": "...", "quantity": 1, "configuration": "...", "price": 0, "cost": 0, "tax_amount": 0 }
      ],
      "subtotal": 0,
      "cost": 0,
@@ -35,10 +35,27 @@ Camo CPQ is a small configure-price-quote tool. A user picks one product and any
      "tax_percentage": 5,
      "tax_location": "12345",
      "currency": "USD",
-     "total": 0
+     "total": 0,
+     "comment": "",
+     "quote_expiration_date": "2026-08-15",
+     "ship_to": {
+       "hs_contact_id": "508812292839",
+       "first_name": "Chris",
+       "last_name": "Becher",
+       "street": "850 El Chorro Way",
+       "city": "Sacramento",
+       "state": "CA",
+       "zip": "95864"
+     }
    }
    ```
    `hs_deal_id`/`deal_name`/`deal_product` come from `state.selectedDeal` (from the deal-select step below) and are `null` when the user skipped straight to a price lookup; when present, the n8n workflow uses `hs_deal_id` to update that existing deal and its line items on the HubSpot side, void any previous quotes on it, and create a new quote. Each of `product` and every entry in `options` carries its own `tax_amount`, computed with the same pre-existing quirky formula described in step 5 (cost × 10% for both, plus an extra price × 10% for options only) and rounded to the nearest cent; the top-level `tax_amount` is their sum, also rounded to the nearest cent. `cost` and `margin` are the same combined-cost and margin-percentage figures shown behind the "Show Margin" toggle, not previously sent to this endpoint. `discount_amount` (dollars) and `discount_percentage` are both always populated as equivalent values regardless of which discount mode (`$` or `%`) the user typed into, computed from whichever one was entered. `tax_percentage`, `tax_location`, and `currency` are static values sent on every request, not computed from the quote.
+
+   Each `options[]` entry's `quantity` (an integer, always ≥ 1) and `configuration` (a string, empty when the add-on has no configuration choice) come from the new `max_quantity`/`configuration` sheet columns described below. `price`, `cost`, and `tax_amount` for an option are already multiplied by its `quantity`, this endpoint doesn't need to do that multiplication itself. Products carry neither field, quantity/configuration are add-ons only.
+
+   `comment` is a freeform note the rep types directly on the quote (`state.quoteComment`, a new "Comment" field in the Quote Summary panel), separate from the note on the "Send Quote" email modal (`state.quoteEmailNote`, unchanged, still only used in the email body, never sent here). `quote_expiration_date` is `yyyy-mm-dd`, defaulting to 30 days from today (`defaultQuoteExpirationDate()` in `app.js`) but editable per quote via the calendar dropdown described below; it's just a value passed through, `app.js` does nothing else with it. `ship_to` is the editable shipping address described below; `hs_contact_id` is `null` whenever no HubSpot contact is selected (no deal, or the deal has no contacts), in which case the address fields are sent as-is (freeform, quote-only) and n8n shouldn't attempt to write them back onto any contact.
+
+   The expiration date field itself (`#quote-expiration-date`) isn't a native `<input type="date">` — that calendar dropdown is unstyleable browser/OS chrome, and the ask was an on-brand look, so it's a plain `readonly` text input driven by Flatpickr instead (`renderExpirationDatePicker()` in `app.js`, on-brand overrides in `styles.css` under the `flatpickr-*` selectors). Same reasoning as the Google Sign-In button (`renderGoogleButton()`): since `render()` fully replaces `#app`'s innerHTML on every state change, the old Flatpickr instance would be left pointing at a detached DOM node, so it's torn down and a fresh one attached after every re-render instead. `onChange` calls `setQuoteExpirationDate()` with Flatpickr's own `dateFormat: "Y-m-d"` output, matching `state.quoteExpirationDate`'s format exactly.
 
 ## The deal/product selection step
 
@@ -51,6 +68,16 @@ Sits between the sign-in gate and the main product/add-on/summary layout (`dealS
 - "Skip, just do a price lookup" jumps to the main CPQ layout with nothing preselected.
 - **`?hs_deal_id=<record id>` query param**: on boot, if present, the app immediately calls the same `hs-fetch` search with that ID, in parallel with (not waiting on) the sign-in-gated pricing fetch, since the deal lookup needs no sign-in. The deal-select page shows a "Looking up deal…" spinner for as long as this is unresolved. An exact `hs_object_id` match skips the picker entirely and preselects like a manual selection would; no match shows an inline "Deal not found" notice and falls back to the normal search/skip picker.
 - If the browser is offline (`state.isOnline` false, tracked via the `online`/`offline` window events), the deal-select step is skipped altogether and the app goes straight to the main CPQ layout as if "Skip — just do a price lookup" had been clicked (`resolveInitialStep()`, called once pricing data has loaded). This covers both cases: a `?hs_deal_id=` is present (the auto-lookup itself is skipped, no request attempted) and no `?hs_deal_id=` at all (the picker never appears, there's no working search without a connection). Only the automatic paths are affected; the manual search box will still attempt a search if the picker is showing and the user tries it while offline, it just surfaces a "Could not search deals" error like any other failed fetch.
+
+## The install address / HubSpot contacts
+
+Shown in the Quote Summary panel as "Install Address" (`shipToSectionHtml()` in `app.js`, still `state.shipTo`/`ship_to` internally) once a deal is selected; there's nothing to show without one, since contacts are looked up per-deal, so this section is absent entirely on a skip-straight-to-price-lookup quote.
+
+- On `chooseDeal()` (a manual pick from search results, or a successful `?hs_deal_id=` auto-lookup, see above), `app.js` fires off `GET https://n8n.californiamobility.com/webhook/camo-cpq/hs-fetch?fetch=contacts&search=<hs_deal_id>` (`fetchContactsForDeal()`/`loadContactsForDeal()`), in the background, not blocking the jump to the CPQ layout.
+- Response shape (as given, not yet independently re-verified against the live endpoint the way the deals/pricing shapes were): `{"contacts": [{"hs_contact_id": "...", "email": "...", "firstname": "...", "lastname": "...", "address_street": null, "address_city": "...", "address_state": null, "address_zip": "..."}]}`. Address fields can individually be `null`. Assumed, by analogy with `fetchDeals()`/the deals endpoint, to also return `200` with an **empty body** (not `{}`/`{"contacts": []}`) when a deal has no contacts; `fetchContactsForDeal()` handles that case the same way `fetchDeals()` does. Worth confirming against the live endpoint the first time this is actually exercised.
+- The first contact returned is preselected automatically. If the deal has 2+ contacts, a "Contact" dropdown appears to switch between them. If it has zero, the address fields are simply left blank, with a small note that this address is quote-only and won't sync to HubSpot.
+- Selecting a contact (or the auto-preselected one) prefills Street/City/State/ZIP (`applyContactToShipTo()`); those fields stay freely editable from there, independent of the contact record, and switching the "Contact" dropdown overwrites them again with that contact's stored address, discarding any manual edits. The contact's `firstname`/`lastname` are still captured into `state.shipTo` and still sent as `ship_to.first_name`/`ship_to.last_name` in the push body below, they're just not shown or editable in this section (by request, the rep didn't need to see/change them here).
+- A note next to the fields ("Editing this address will update this contact in HubSpot") makes clear that this isn't a passive display field, even though nothing is actually written to HubSpot until "Push to HubSpot" is clicked; editing here only changes local state (see `ship_to` in the POST body above), and it's the `update-hs` n8n workflow's job to actually apply `ship_to` back onto the contact identified by `ship_to.hs_contact_id`.
 
 ## The `packages` array (part of the `camo-cpq-pricing` response)
 
@@ -86,6 +113,7 @@ Everything now lives under one `html/` root, served by a single static file serv
 | `html/sales.californiamobility.com/cpq/index.html` | Page shell, loads `app.js` and the Google Identity Services script, the actual app |
 | `html/sales.californiamobility.com/cpq/app.js` | Everything: Google sign-in, pricing fetch + normalization, rendering, the HubSpot push |
 | `html/sales.californiamobility.com/cpq/styles.css` | Hand-written CSS, app-specific, no build step, no framework |
+| `html/sales.californiamobility.com/cpq/vendor/flatpickr.min.js`, `flatpickr.min.css` | Vendored (not CDN-linked) copy of Flatpickr v4.6.13, MIT licensed, pinned/downloaded once rather than fetched at runtime so it still works offline like everything else here; drives the expiration date field's calendar dropdown, see below |
 | `html/sales.californiamobility.com/cpq/service-worker.js`, `manifest.json` | PWA shell, offline caching |
 | `html/globals/global.css` | Shared brand tokens + reset, meant to be reused by other California Mobility webtools, not just this one (renamed from `static.californiamobility.com/`, since it's not actually a separate host) |
 | `html/globals/index.html` | Same redirect stub pattern, to `../sales.californiamobility.com/cpq`, still unclear why this folder needs one at all, worth a quick check with the team |
@@ -114,7 +142,7 @@ The password gate (`?p=<password>`, checked server-side by n8n) has been replace
 
 There is deliberately no silent/One-Tap sign-in prompt (`google.accounts.id.prompt()` is never called): a returning visitor should never be interrupted by a Google prompt, and shouldn't need to click the Google button again either. Instead, the last successfully-verified ID token is kept in `localStorage` (`cpq-google-last-session`, see `GOOGLE_SESSION_STORAGE_KEY` in `app.js`), and on boot, if one is found, it's replayed straight into `authenticateWithGoogle()`, skipping Google's own sign-in flow entirely, the same effect the old stored-password auto-retry had.
 
-- While online, that replayed token still goes through the normal `Authorization: Bearer` pricing fetch, so n8n fully re-verifies it (signature, `aud`, `exp`) exactly as it would a fresh token; an expired or no-longer-allowlisted token is rejected (401/403) and falls back to the explicit "Sign in with Google" button, same as a first-time visitor. `google.accounts.id.initialize()` still runs on boot regardless (so that fallback button works immediately), it just never calls `.prompt()`.
+- While online, that replayed token still goes through the normal `Authorization: Bearer` pricing fetch, so n8n fully re-verifies it (signature, `aud`, `exp`) exactly as it would a fresh token; an expired or no-longer-allowlisted token is rejected (401/403) and falls back to the explicit "Sign in with Google" button, same as a first-time visitor. `google.accounts.id.initialize()` still runs on boot regardless (so that fallback button works immediately), it just never calls `.prompt()`. Since a stored session can only exist for an account that was previously allowlisted, a 401/403 on this specific replay path is treated as a plain expiry rather than "account isn't authorized": `authenticateWithGoogle(idToken, isStoredSessionReplay)` in `app.js` clears the stored session and immediately calls `window.location.reload()` instead of showing an error, landing the visitor straight on a clean "Sign in with Google" button with one click needed, rather than a scary rejection message sitting next to a button that would have worked anyway. Because the stored session is already cleared before the reload, the next boot has nothing left to replay, so this can't loop. A 401/403 from an explicit button click (a freshly chosen account) keeps the original "isn't authorized" message instead of reloading, since that one can genuinely be an unallowlisted account.
 - While offline, that fetch fails over the network instead (there's no reaching n8n offline either), and the service worker's existing cache-fallback handling serves the last successful pricing response, exactly as it always has for offline visits, see `service-worker.js`. Because that path never actually reaches n8n, it doesn't matter that the replayed token may have since expired, it only needs to exist so the fetch has a header value to send; nothing is actually re-verified until the visitor is back online.
 - If a stored session's account turns out not to be allowlisted (401/403), `disableAutoSelect()`/`clearStoredGoogleSession()` runs so a rejected account's token isn't kept around to replay again.
 - This stored token is cleared on sign-out and on a 401/403 (account no longer allowlisted), same as it's set on a successful sign-in.
@@ -192,6 +220,7 @@ Each call returns only the one key matching its `sheet` value, confirmed by call
       "price": 600,
       "cost": 294,
       "configuration": "",
+      "max_quantity": "",
       "category": "Chair Options",
       "compatible_base_product_skus": "access--flowx",
       "incompatible_option_skus": ""
@@ -199,6 +228,11 @@ Each call returns only the one key matching its `sheet` value, confirmed by call
   ]
 }
 ```
+
+`configuration` and `max_quantity` are both consumed now (`app.js`, `normalizePricingData`):
+
+- `configuration` is a comma-joined list of configuration choices, same convention as `compatible_base_product_skus`/`incompatible_option_skus` (e.g. `"Left, Right"`); empty/blank means the add-on has no configuration choice. Normalized into `configurations` (an array). When an add-on has 2+ configurations, a select appears under its card once checked (`addonExtrasHtml` in `app.js`), defaulting to the first listed choice until the user picks one (`getAddonConfiguration`).
+- `max_quantity` is a plain number; blank/`0`/non-numeric all normalize to `1` (`Math.max(1, ...)` in `normalizePricingData`). When `max_quantity` is greater than 1, a quantity stepper (1 to `max_quantity`) appears under the add-on's card once checked, defaulting to 1 (`getAddonQuantity`). Quantity multiplies that add-on's price, cost, and tax everywhere: the add-on card's own displayed price, the Quote Summary line item and totals, and the `options[]` entries sent to `update-hs` (see below). Products have no quantity or configuration concept, this is add-ons only.
 
 `?sheet=packages` returns `{"packages": [...]}`, shape documented separately below.
 
@@ -218,3 +252,14 @@ Things that are easy to get wrong here, and did trip up earlier versions of this
 `.claude/launch.json` defines a single `static-site` config (`python3 -m http.server 4173`, serving `html/`), matching how the production host serves everything from one root now. There is no build step, edit `app.js` directly and reload.
 
 The app itself is at `http://localhost:4173/sales.californiamobility.com/cpq/`, not the server root, opening `http://localhost:4173/` locally hits the redirect stub described above. Because the whole `html/` tree is now one server root both locally and in production, the relative `global.css` link resolves correctly in both places, there's no longer a local/production split to work around here.
+
+Since the `python3 -m http.server` in `.claude/launch.json` binds all interfaces, not just `localhost`, a phone on the same wifi can reach it at `http://<this computer's LAN IP>:4173/sales.californiamobility.com/cpq/` too, useful for testing on a real device without deploying.
+
+### Skipping Google Sign-In locally
+
+Google Identity Services is registered against specific origins (see "What's needed from GCP" above, currently just `http://localhost:4173`); a phone's LAN-IP origin isn't one of them, so the Google button may not work there at all. `app.js` (see "local dev auth bypass" comment near `fetchPricingData`) can skip Google entirely on both localhost and a phone-over-LAN-IP, still loading real pricing data via the old `?p=` password n8n still accepts:
+
+1. Copy `dev-auth.local.js.example` to `dev-auth.local.js` (same directory), fill in the password.
+2. `dev-auth.local.js` is gitignored, never committed, so the password never ships in source anyone could view on the live site.
+3. This only ever activates when the page's own hostname is `localhost`/`127.0.0.1`/a private LAN address (`isLocalDevHost()`), which production never is, and only when `dev-auth.local.js` is actually present. A yellow banner appears whenever it's active, and it's logged to the console.
+4. Anyone else on the same wifi who found the file's URL while the dev server is running could read the password too. Fine for a trusted home/office network during dev, not a substitute for real auth anywhere else.
