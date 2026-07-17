@@ -845,6 +845,15 @@ function findPackageForDeal(deal) {
   );
 }
 
+// Sets state.addonSkus to a package's option_skus (intersected with the
+// add-ons actually loaded), shared by applyPackageSelection (deal auto-match)
+// and selectProduct (product-sku auto-match) below.
+function applyPackageAddons(pkg) {
+  if (!pkg) return;
+  const allowedOptionSkus = new Set(pkg.optionSkus);
+  state.addonSkus = new Set(state.addons.filter((a) => allowedOptionSkus.has(a.sku)).map((a) => a.sku));
+}
+
 function applyPackageSelection(pkg) {
   if (!pkg) return;
   const product = state.products.find((p) => p.sku === pkg.productSku);
@@ -852,9 +861,15 @@ function applyPackageSelection(pkg) {
     state.productSku = product.sku;
     state.openProductCat = product.category;
   }
-  const allowedOptionSkus = new Set(pkg.optionSkus);
-  state.addonSkus = new Set(state.addons.filter((a) => allowedOptionSkus.has(a.sku)).map((a) => a.sku));
+  applyPackageAddons(pkg);
   syncAddonsToProduct();
+}
+
+// Finds the package whose product_sku matches a selected product, so
+// selectProduct() below can auto-select that package's add-ons any time a
+// product is chosen directly (not just when preselected via a matched deal).
+function findPackageForProduct(productSku) {
+  return state.packages.find((pkg) => pkg.productSku === productSku) || null;
 }
 
 // Prefills the editable ship-to address from a HubSpot contact; called with
@@ -1032,7 +1047,12 @@ function resolveInitialStep() {
 }
 
 function selectProduct(sku) {
+  // Only auto-apply a matched package's add-ons when the product actually
+  // changes, so re-clicking the already-selected product card doesn't wipe
+  // out add-ons the rep has since customized away from the package default.
+  const productChanged = state.productSku !== sku;
   state.productSku = sku;
+  if (productChanged) applyPackageAddons(findPackageForProduct(sku));
   syncAddonsToProduct();
   state.addonSearchQuery = "";
   state.pricingDirty = true;
