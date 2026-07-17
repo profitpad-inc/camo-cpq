@@ -2,6 +2,12 @@
 // Single mutable `state` object + one full re-render per state change,
 // with focus/selection preserved across re-renders (see restoreFocus below).
 
+// document.currentScript is only reliable during this script's own
+// synchronous top-level execution (see below, not inside the "load"
+// listener), so its URL is captured into a plain variable here for later
+// use, rather than re-reading document.currentScript at registration time.
+const APP_SCRIPT_URL = document.currentScript && document.currentScript.src;
+
 function classNames(...arr) {
   return arr.filter(Boolean).join(" ");
 }
@@ -2045,7 +2051,7 @@ function summarySectionHtml() {
         ${
           marginHeld
             ? `<div class="summary__margin-group">
-                <span class="${classNames("summary__margin", isLowMargin && "summary__margin--warning")}">Margin: ${marginPct.toFixed(1)}%</span>
+                <span class="${classNames("summary__margin", isLowMarginFromDiscount && "summary__margin--warning")}">Margin: ${marginPct.toFixed(1)}%</span>
                 <span class="summary__margin-divider">|</span>
                 <span class="summary__margin">Tax Rate: ${(taxRate * 100).toFixed(2)}%</span>
               </div>`
@@ -2962,14 +2968,18 @@ if (DEV_BYPASS_CANDIDATE) {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    // service-worker.js lives one directory up from here (see its own
-    // top-of-file comment for why), and is registered with an absolute,
-    // repo-root-relative path rather than "./service-worker.js": a relative
-    // path resolves differently depending on whether *this page's* own URL
-    // has a trailing slash (e.g. ".../cpq" vs ".../cpq/"), which can point
-    // at the wrong file (or 404) rather than reliably finding this one.
+    // service-worker.js lives one directory up from cpq/ (see its own
+    // top-of-file comment for why). Resolved against this script's own URL
+    // (APP_SCRIPT_URL, captured above) rather than either "./service-worker.js"
+    // (resolves against *the page's* URL, which breaks on a no-trailing-slash
+    // ".../cpq") or a hardcoded absolute path (broke when this app moved from
+    // being served under an IP + "/sales.californiamobility.com/cpq" path to
+    // living at that domain's own root, doubling the path, see HANDOFF.md).
+    const swUrl = APP_SCRIPT_URL
+      ? new URL("../service-worker.js", APP_SCRIPT_URL).href
+      : "../service-worker.js";
     navigator.serviceWorker
-      .register("/sales.californiamobility.com/service-worker.js")
+      .register(swUrl)
       .catch((err) => console.error("SW registration failed:", err));
   });
 }
