@@ -352,7 +352,7 @@ async function authenticateWithDevBypass(password) {
     state.taxRates = data.taxRates;
     state.authed = true;
     state.devBypass = true;
-    state.userEmail = null;
+    state.userEmail = "chris.becher@profitpad.com";
     state.userName = "Local dev";
     resolveInitialStep();
     console.warn("[dev-auth] Google sign-in bypassed via dev-auth.local.js; not a verified session.");
@@ -459,6 +459,20 @@ function decodeIdTokenPayload(idToken) {
   } catch {
     return null;
   }
+}
+
+// state.userName is a single display string (Google's "name" claim, or
+// "Local dev" on the dev bypass); the update-hs push wants first/last
+// separately, so split on the first space rather than storing both shapes.
+function splitFullName(fullName) {
+  const trimmed = (fullName || "").trim();
+  if (!trimmed) return { firstName: "", lastName: "" };
+  const spaceIndex = trimmed.indexOf(" ");
+  if (spaceIndex === -1) return { firstName: trimmed, lastName: "" };
+  return {
+    firstName: trimmed.slice(0, spaceIndex),
+    lastName: trimmed.slice(spaceIndex + 1),
+  };
 }
 
 // The endpoint returns raw sheet-shaped rows (snake_case, comma-joined SKU
@@ -1216,6 +1230,7 @@ async function handlePushToHubspot() {
   if (!selectedProduct) return;
   const selectedAddons = getSelectedAddons();
 
+  const taxRate = getTaxRate(state.shipTo.zip);
   const productCost = selectedProduct.unit_cost || 0;
   const product = {
     name: selectedProduct.name,
@@ -1224,12 +1239,13 @@ async function handlePushToHubspot() {
     hs_product: selectedProduct.hsProduct,
     price: selectedProduct.unit_price,
     cost: productCost,
-    tax_amount: roundToCent(productCost * 0.1),
+    tax_amount: roundToCent(productCost * taxRate),
   };
 
   const options = selectedAddons.map((a) => {
     const quantity = getAddonQuantity(a);
-    const price = (a.unit_price || 0) * quantity;
+    const unitPrice = a.unit_price || 0;
+    const totalPrice = unitPrice * quantity;
     const cost = (a.unit_cost || 0) * quantity;
     return {
       name: a.name,
@@ -1237,14 +1253,17 @@ async function handlePushToHubspot() {
       sku: a.sku,
       quantity,
       configuration: getAddonConfiguration(a) || "",
-      price,
+      // update-hs applies quantity itself on the HubSpot side, so this is the
+      // per-unit price, not price * quantity (unlike cost/tax_amount below)
+      price: unitPrice,
       cost,
-      // combined-cost 10% (like the product) plus the extra 10%-of-price quirk on add-ons
-      tax_amount: roundToCent(cost * 0.1 + price * 0.1),
+      // combined-cost rate (like the product) plus the extra rate-of-price quirk on add-ons
+      tax_amount: roundToCent(cost * taxRate + totalPrice * taxRate),
     };
   });
 
-  const subtotal = product.price + options.reduce((s, o) => s + o.price, 0);
+  const subtotal =
+    product.price + selectedAddons.reduce((s, a) => s + (a.unit_price || 0) * getAddonQuantity(a), 0);
   const cost = product.cost + options.reduce((s, o) => s + o.cost, 0);
   const taxAmount = roundToCent(product.tax_amount + options.reduce((s, o) => s + o.tax_amount, 0));
   const rawDiscount = Number(state.discountValue || 0);
@@ -1256,7 +1275,6 @@ async function handlePushToHubspot() {
   const totalBeforeTax = subtotal - discountAmount;
   const total = totalBeforeTax + taxAmount;
   const margin = totalBeforeTax !== 0 ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100 : 0;
-  const taxRate = getTaxRate(state.shipTo.zip);
 
   state.quoteLoading = true;
   state.quoteLink = null;
@@ -1272,6 +1290,9 @@ async function handlePushToHubspot() {
         hs_deal_id: state.selectedDeal ? state.selectedDeal.hs_object_id : null,
         deal_name: state.selectedDeal ? state.selectedDeal.dealname : null,
         deal_product: state.selectedDeal ? state.selectedDeal.product : null,
+        rep_first_name: splitFullName(state.userName).firstName || null,
+        rep_last_name: splitFullName(state.userName).lastName || null,
+        rep_email: state.userEmail || null,
         product,
         options,
         subtotal,
@@ -1952,9 +1973,10 @@ function summarySectionHtml() {
 
   const subtotal = lineItems.reduce((s, item) => s + Number(item.price || 0), 0);
   const cost = lineItems.reduce((s, item) => s + Number(item.cost || 0), 0);
+  const taxRate = getTaxRate(state.shipTo.zip);
   const tax =
-    cost * 0.1 +
-    selectedAddons.reduce((s, a) => s + Number(a.unit_price || 0) * getAddonQuantity(a) * 0.1, 0);
+    cost * taxRate +
+    selectedAddons.reduce((s, a) => s + Number(a.unit_price || 0) * getAddonQuantity(a) * taxRate, 0);
   const rawDiscount = Number(state.discountValue || 0);
   const discountAmount =
     state.discountType === "$"
@@ -1963,7 +1985,6 @@ function summarySectionHtml() {
   const totalBeforeTax = subtotal - discountAmount;
   const total = totalBeforeTax + tax;
   const marginPct = totalBeforeTax !== 0 ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100 : 0;
-  const taxRate = getTaxRate(state.shipTo.zip);
   const isLowMargin = marginPct < LOW_MARGIN_THRESHOLD;
   const isLowMarginFromDiscount = isLowMargin && discountAmount > 0;
 
