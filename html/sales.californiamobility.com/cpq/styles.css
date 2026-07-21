@@ -129,7 +129,7 @@
   gap: 1.5rem;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 768px) {
   .layout-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -532,7 +532,7 @@
   font-weight: 500;
   color: var(--color-gray-900);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -739,7 +739,7 @@
 /* Below the .layout-grid 2-column breakpoint, the product/add-on panels
    stack into a single column; let each grow/shrink to fit its content
    instead of scrolling internally, so there's only ever the page scrollbar. */
-@media (max-width: 899.98px) {
+@media (max-width: 767.98px) {
   .panel__body {
     height: auto;
     overflow-y: visible;
