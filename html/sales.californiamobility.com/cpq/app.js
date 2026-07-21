@@ -771,8 +771,14 @@ function syncAddonsToProduct() {
 // a clean sign-in screen, the same effect as the manual refresh a visitor
 // would otherwise reach for. clearStoredGoogleSession() below already runs
 // before the reload, so the next boot has no stored session to replay and
-// won't loop, it lands on the plain "Sign in with Google" button. An
-// explicit button click that comes back 401 is a fresh account pick, so
+// won't loop, it lands on the plain "Sign in with Google" button — where
+// initGoogleAuth()'s silent one-tap prompt (see below) then gets a fresh
+// token without the visitor needing to click it, as long as their browser's
+// own Google session is still alive. That's also why disableAutoSelect()
+// (which tells Google to stop silently offering this account) only runs for
+// a genuinely-rejected explicit pick below, not for this replay-expiry path:
+// calling it here would block that same silent re-sign-in on every reload.
+// An explicit button click that comes back 401 is a fresh account pick, so
 // that one really can be a genuinely unauthorized account, keep showing
 // that message instead of reloading.
 async function authenticateWithGoogle(idToken, isStoredSessionReplay = false) {
@@ -796,11 +802,14 @@ async function authenticateWithGoogle(idToken, isStoredSessionReplay = false) {
     resolveInitialStep();
   } catch (e) {
     if (e.code === "unauthorized") {
-      // Not this user's fault the account isn't allowlisted; don't leave
-      // Google auto-selecting the same rejected account on the next visit,
-      // and don't let a rejected account keep unlocking offline replay either.
-      window.google?.accounts?.id?.disableAutoSelect();
+      // Don't let a rejected/expired account keep unlocking offline replay.
       clearStoredGoogleSession();
+      if (!isStoredSessionReplay) {
+        // A freshly chosen account was genuinely rejected (not just an
+        // expired stored-session replay, see comment above authenticateWithGoogle);
+        // don't leave Google auto-selecting that same account on the next visit.
+        window.google?.accounts?.id?.disableAutoSelect();
+      }
     }
     if (e.code === "unauthorized" && isStoredSessionReplay) {
       window.location.reload();
@@ -2874,13 +2883,15 @@ async function revalidateAuthOnResume() {
   } catch (e) {
     if (e.code === "unauthorized") {
       // Same handling as a rejected stored-session replay on boot (see
-      // authenticateWithGoogle): don't leave a revoked account signed in or
-      // auto-selectable, and reload straight into a clean sign-in screen
-      // rather than leaving a scary error sitting over whatever was on
-      // screen. This can interrupt an in-progress quote, but continuing to
-      // let a revoked account keep using pricing data isn't the safer
-      // failure mode here.
-      window.google?.accounts?.id?.disableAutoSelect();
+      // authenticateWithGoogle): clear the stored token and reload straight
+      // into a clean sign-in screen rather than leaving a scary error
+      // sitting over whatever was on screen. This can interrupt an
+      // in-progress quote, but continuing to let a revoked account keep
+      // using pricing data isn't the safer failure mode here. Deliberately
+      // NOT disableAutoSelect() here, same reasoning as authenticateWithGoogle:
+      // this is almost always just the token's normal ~1hr expiry, not a
+      // genuinely revoked account, and disabling auto-select would block the
+      // silent one-tap re-sign-in that's about to run on the reload.
       clearStoredGoogleSession();
       window.location.reload();
     }
@@ -2904,11 +2915,17 @@ render();
 
 // Called once the Google Identity Services script (loaded async in
 // index.html) is confirmed ready, see the load/error listeners on that
-// script tag below, which is what actually invokes this. Only sets Google
-// up to handle an *explicit* button click; there's no silent/One-Tap
-// sign-in attempt here at all (see the storedGoogleSession replay below for
-// how returning visitors skip the button instead).
-function initGoogleAuth() {
+// script tag below, which is what actually invokes this. Always sets Google
+// up to handle an explicit button click; when `attemptSilentSignIn` is true
+// (there was no stored session to replay, see bootGoogleAuth below) it also
+// fires a one-tap silent sign-in attempt off Google's own browser session,
+// so a returning visitor whose stored token has expired gets a fresh one
+// without clicking anything, as long as they're still signed into Google in
+// this browser. `auto_select: true` is what makes that silent when exactly
+// one Google session is available; without it, one-tap still shows a small
+// (still clickless-if-ignored, but visible) account chooser instead of
+// firing the callback outright.
+function initGoogleAuth(attemptSilentSignIn) {
   if (!window.google?.accounts?.id) {
     // Script didn't load (blocked, offline, etc). There's no local fallback,
     // Google has to do the actual signing in, so just surface it instead of
@@ -2920,7 +2937,11 @@ function initGoogleAuth() {
   google.accounts.id.initialize({
     client_id: GOOGLE_CLIENT_ID,
     callback: (response) => authenticateWithGoogle(response.credential),
+    auto_select: true,
   });
+  if (attemptSilentSignIn) {
+    google.accounts.id.prompt();
+  }
   render();
 }
 
@@ -2942,13 +2963,19 @@ function bootGoogleAuth() {
     authenticateWithGoogle(storedGoogleSession.idToken, true);
   }
 
+  // Only attempt the silent one-tap sign-in when there's no stored token to
+  // replay instead; if the replay above succeeds, one-tap would just be a
+  // redundant round-trip, and if it's still in flight, a second concurrent
+  // sign-in call would be wasted work at best.
+  const attemptSilentSignIn = !storedGoogleSession;
+
   // Google Identity Services is still initialized in parallel (not only when
   // there's no stored session) so the explicit "Sign in with Google" button
   // is ready to use immediately if the stored-token replay above fails.
   if (window.google?.accounts?.id) {
     // Already loaded and executed by the time this line runs (e.g. cached,
     // or this synchronous script happened to run after the async one).
-    initGoogleAuth();
+    initGoogleAuth(attemptSilentSignIn);
   } else {
     // Deliberately NOT window's `load` event here — that waits for every
     // resource on the page, including the header/favicon images pulled from
@@ -2958,11 +2985,11 @@ function bootGoogleAuth() {
     // itself is actually ready, nothing else on the page should hold it back.
     const script = document.getElementById("google-identity-script");
     if (script) {
-      script.addEventListener("load", initGoogleAuth, { once: true });
-      script.addEventListener("error", initGoogleAuth, { once: true });
+      script.addEventListener("load", () => initGoogleAuth(attemptSilentSignIn), { once: true });
+      script.addEventListener("error", () => initGoogleAuth(attemptSilentSignIn), { once: true });
     } else {
       // Shouldn't happen (the tag lives in index.html), but don't hang forever.
-      window.addEventListener("load", initGoogleAuth);
+      window.addEventListener("load", () => initGoogleAuth(attemptSilentSignIn));
     }
   }
 }
