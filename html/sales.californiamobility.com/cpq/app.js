@@ -1220,6 +1220,27 @@ function isZipValid() {
   return state.shipTo.zip === "" || /^\d{5}$/.test(state.shipTo.zip);
 }
 
+// All install-address fields are mandatory (the ship-to block only shows once
+// a deal is selected, so this only applies then). Returns a { field: message }
+// map of just the invalid fields; an empty object means the address is
+// complete. Like the zip error, these settle on blur via the focusout
+// renderSummary() below, not on every keystroke.
+const SHIP_TO_REQUIRED_FIELDS = ["street", "city", "state", "zip"];
+function shipToErrors() {
+  const errors = {};
+  for (const key of SHIP_TO_REQUIRED_FIELDS) {
+    if (!String(state.shipTo[key]).trim()) errors[key] = "Required.";
+  }
+  // Only layer the format message on top once something's actually been typed
+  // (an empty zip is already covered by "Required." above).
+  if (!errors.zip && !isZipValid()) errors.zip = "Zip must be 5 digits.";
+  return errors;
+}
+
+function isShipToComplete() {
+  return Object.keys(shipToErrors()).length === 0;
+}
+
 function toggleMargin() {
   state.marginHeld = !state.marginHeld;
   render();
@@ -1237,6 +1258,12 @@ function roundToCent(n) {
 async function handlePushToHubspot() {
   const selectedProduct = getSelectedProduct();
   if (!selectedProduct) return;
+  // Same gate as the disabled push button: never push a deal-backed quote with
+  // an incomplete install address.
+  if (state.selectedDeal && !isShipToComplete()) {
+    render();
+    return;
+  }
   const selectedAddons = getSelectedAddons();
 
   const taxRate = getTaxRate(state.shipTo.zip);
@@ -1266,8 +1293,7 @@ async function handlePushToHubspot() {
       // per-unit price, not price * quantity (unlike cost/tax_amount below)
       price: unitPrice,
       cost,
-      // combined-cost rate (like the product) plus the extra rate-of-price quirk on add-ons
-      tax_amount: roundToCent(cost * taxRate + totalPrice * taxRate),
+      tax_amount: roundToCent(totalPrice * taxRate),
     };
   });
 
@@ -1905,7 +1931,8 @@ function shipToSectionHtml() {
     </div>
   `;
 
-  const zipErrorHtml = isZipValid() ? "" : `<p class="ship-to__error">Zip must be 5 digits.</p>`;
+  const errors = shipToErrors();
+  const errorHtml = (key) => (errors[key] ? `<p class="ship-to__error">${errors[key]}</p>` : "");
 
   return `
     <div class="ship-to">
@@ -1913,10 +1940,10 @@ function shipToSectionHtml() {
       ${statusHtml}
       ${contactPickerHtml}
       ${hubspotNoteHtml}
-      ${field("street", "Street")}
-      ${field("city", "City")}
-      ${field("state", "State")}
-      ${field("zip", "Zip", `maxlength="5" inputmode="numeric"`, zipErrorHtml)}
+      ${field("street", "Street *", "", errorHtml("street"))}
+      ${field("city", "City *", "", errorHtml("city"))}
+      ${field("state", "State *", "", errorHtml("state"))}
+      ${field("zip", "Zip *", `maxlength="5" inputmode="numeric"`, errorHtml("zip"))}
     </div>
   `;
 }
@@ -1983,8 +2010,9 @@ function summarySectionHtml() {
   const subtotal = lineItems.reduce((s, item) => s + Number(item.price || 0), 0);
   const cost = lineItems.reduce((s, item) => s + Number(item.cost || 0), 0);
   const taxRate = getTaxRate(state.shipTo.zip);
+  const productCost = selectedProduct ? Number(selectedProduct.unit_cost || 0) : 0;
   const tax =
-    cost * taxRate +
+    productCost * taxRate +
     selectedAddons.reduce((s, a) => s + Number(a.unit_price || 0) * getAddonQuantity(a) * taxRate, 0);
   const rawDiscount = Number(state.discountValue || 0);
   const discountAmount =
@@ -2039,17 +2067,22 @@ function summarySectionHtml() {
   `;
 
   const alreadyPushed = Boolean(state.dealLink) && !state.pricingDirty;
+  // The install address is mandatory, but it only exists on a deal-backed
+  // quote, so this gate only applies once a deal is selected.
+  const shipToIncomplete = Boolean(state.selectedDeal) && !isShipToComplete();
   const pushHubspotDisabled =
-    !state.isOnline || !state.selectedDeal || !selectedProduct || state.quoteLoading || alreadyPushed;
+    !state.isOnline || !state.selectedDeal || !selectedProduct || shipToIncomplete || state.quoteLoading || alreadyPushed;
   const pushHubspotTitle = !state.isOnline
     ? "No internet connection"
     : !state.selectedDeal
       ? "Select a deal first"
       : !selectedProduct
         ? "Select a product first"
-        : alreadyPushed
-          ? "Already pushed — change the price to push again"
-          : "";
+        : shipToIncomplete
+          ? "Complete the install address first"
+          : alreadyPushed
+            ? "Already pushed — change the price to push again"
+            : "";
 
   const pushButtonHtml = `
     <button type="button" data-action="push-hubspot" ${pushHubspotDisabled ? "disabled" : ""}
@@ -2280,6 +2313,10 @@ function quoteEmailFormContentHtml() {
 function backToDealSelect() {
   clearDealIdFromUrl();
   state.step = "deal-select";
+  state.quoteLink = null;
+  state.dealLink = null;
+  state.quoteEmailChips = [];
+  state.quoteEmailDraft = "";
   render();
 }
 
