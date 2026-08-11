@@ -804,7 +804,12 @@
   .summary__margin-group {
     flex-direction: row;
     align-items: center;
-    gap: 0.75rem;
+    /* Margin + tax rate + price book, each with the location that produced it,
+       is more than fits on one line in a narrow summary column, so let it wrap
+       rather than push the row wider than the panel. */
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.375rem 0.75rem;
   }
 
   .summary__margin-divider {

@@ -1,5 +1,7 @@
 # Camo CPQ, Handoff Notes
 
+Ignore the .archive folder altogether.
+
 ## What this is
 
 Camo CPQ is a small configure-price-quote tool. A user picks one product and any compatible add-ons, sees a live price/tax/discount/margin summary, and can push the resulting quote to HubSpot. It is a static, no-build, vanilla JavaScript single-page app, there is no backend server or database.
@@ -7,10 +9,10 @@ Camo CPQ is a small configure-price-quote tool. A user picks one product and any
 ## How the app works, end to end
 
 1. On load, the app shows a "Sign in with Google" button and fetches nothing until the visitor signs in.
-2. On a successful Google sign-in, it calls the same n8n webhook three times in parallel, once per sheet (`https://n8n.californiamobility.com/webhook/camo-cpq/pricing?sheet=products|options|packages`), sending the Google ID token as `Authorization: Bearer <idToken>` on each request. A 401 or 403 from any of the three means the signed-in Google account isn't allowlisted, shown inline, no data loads. Any other non-2xx or network/CORS failure shows a generic "Could not reach the pricing service" message. On success, the three responses are merged into the product/add-on/package catalog, see the JSON contract below.
+2. On a successful Google sign-in, it calls the same n8n webhook once per sheet (`https://n8n.californiamobility.com/webhook/camo-cpq/pricing?sheet=products|options|packages|taxes|pricebooks`), sending the Google ID token as `Authorization: Bearer <idToken>` on each request. A 401 or 403 on `products`/`options`/`packages` means the signed-in Google account isn't allowlisted, shown inline, no data loads. Any other non-2xx or network/CORS failure on those three shows a generic "Could not reach the pricing service" message. `taxes` and `pricebooks` are best-effort instead of fatal, see their own sections below. On success, the responses are merged into the product/add-on/package catalog, see the JSON contract below.
 3. **Deal/product selection step** (new, between sign-in and the main CPQ layout, `state.step === "deal-select"`): the user either searches for an existing HubSpot deal or skips straight to a price lookup. See "The deal/product selection step" below.
 4. The user opens a product category, selects one product. Add-ons scoped to that product appear, grouped by category, with incompatible add-ons disabled once a conflicting add-on is selected. Product cards and the Quote Summary show the manufacturer-facing description; add-on cards show no description at all (by request). The customer-facing description is still fetched and kept on each product/add-on as `customerDescription`, unused for display, reserved for the HubSpot push described below.
-5. The summary panel computes subtotal, tax (the zip-based tax rate, see below, applied to the product's cost, plus that same rate applied to each add-on's price, not its cost), discount ($ or %), and total in real time. A "Show Margin" toggle reveals cost and margin percentage for internal use.
+5. The summary panel computes subtotal, tax (the city/zip-based tax rate, see below, applied to the product's cost, plus that same rate applied to each add-on's price, not its cost), discount ($ or %), and total in real time. A "Show Margin" toggle reveals cost and margin percentage for internal use.
 6. "Push to HubSpot" POSTs the quote to a separate n8n webhook (`https://n8n.californiamobility.com/webhook/camo-cpq/update-hs`), which updates the selected deal and its line items, voids any previous quotes on that deal, and creates a new quote, returning `quote_link` and `deal_link` URLs, which then render as buttons. This call is unauthenticated, it does not require the Google sign-in. An info icon next to "Push to HubSpot" (`pushHubspotInfoHtml` in `app.js`) surfaces this update/void/create-new behavior to the user before they click it.
 
    The POST body (`handlePushToHubspot()` in `app.js`):
@@ -52,7 +54,7 @@ Camo CPQ is a small configure-price-quote tool. A user picks one product and any
      }
    }
    ```
-   `hs_deal_id`/`deal_name`/`deal_product` come from `state.selectedDeal` (from the deal-select step below) and are `null` when the user skipped straight to a price lookup; when present, the n8n workflow uses `hs_deal_id` to update that existing deal and its line items on the HubSpot side, void any previous quotes on it, and create a new quote. Each of `product` and every entry in `options` carries its own `tax_amount`, computed with the same formula described in step 5 (the product's `tax_amount` is its cost × the zip-based tax rate; each option's `tax_amount` is its price × that same rate, not its cost) and rounded to the nearest cent; the top-level `tax_amount` is their sum, also rounded to the nearest cent. `cost` and `margin` are the same combined-cost and margin-percentage figures shown behind the "Show Margin" toggle, not previously sent to this endpoint. `discount_amount` (dollars) and `discount_percentage` are both always populated as equivalent values regardless of which discount mode (`$` or `%`) the user typed into, computed from whichever one was entered. `tax_percentage` and `tax_location` come from the zip-based tax rate lookup described below (the "Install Address" zip and its looked-up rate); `currency` is still a static value sent on every request. `rep_first_name`/`rep_last_name`/`rep_email` identify which rep pushed the quote, from the signed-in Google account's `name`/`email` claims (`state.userName`/`state.userEmail`, set in `authenticateWithGoogle()`); `rep_first_name`/`rep_last_name` are split from the single `name` claim on the first space (`splitFullName()` in `app.js`), so a name with no space (or a multi-word last name) won't split perfectly. On the local dev auth bypass, which has no real Google token to read claims from, `state.userName` is hardcoded to `"Local dev"` (splitting to `rep_first_name: "Local"`, `rep_last_name: "dev"`) and `state.userEmail` is hardcoded to a real address so pushes from a dev session still land on a valid HubSpot owner.
+   `hs_deal_id`/`deal_name`/`deal_product` come from `state.selectedDeal` (from the deal-select step below) and are `null` when the user skipped straight to a price lookup; when present, the n8n workflow uses `hs_deal_id` to update that existing deal and its line items on the HubSpot side, void any previous quotes on it, and create a new quote. Each of `product` and every entry in `options` carries its own `tax_amount`, computed with the same formula described in step 5 (the product's `tax_amount` is its cost × the city/zip-based tax rate; each option's `tax_amount` is its price × that same rate, not its cost) and rounded to the nearest cent; the top-level `tax_amount` is their sum, also rounded to the nearest cent. `cost` and `margin` are the same combined-cost and margin-percentage figures shown behind the "Show Margin" toggle, not previously sent to this endpoint. `discount_amount` (dollars) and `discount_percentage` are both always populated as equivalent values regardless of which discount mode (`$` or `%`) the user typed into, computed from whichever one was entered. `tax_percentage` and `tax_location` come from the city/zip-based tax rate lookup described below (the "Install Address" city/zip and the rate they resolve to; `tax_location` is the zip specifically, even when the city is what matched); `currency` is still a static value sent on every request. `rep_first_name`/`rep_last_name`/`rep_email` identify which rep pushed the quote, from the signed-in Google account's `name`/`email` claims (`state.userName`/`state.userEmail`, set in `authenticateWithGoogle()`); `rep_first_name`/`rep_last_name` are split from the single `name` claim on the first space (`splitFullName()` in `app.js`), so a name with no space (or a multi-word last name) won't split perfectly. On the local dev auth bypass, which has no real Google token to read claims from, `state.userName` is hardcoded to `"Local dev"` (splitting to `rep_first_name: "Local"`, `rep_last_name: "dev"`) and `state.userEmail` is hardcoded to a real address so pushes from a dev session still land on a valid HubSpot owner.
 
    Each `options[]` entry's `quantity` (an integer, always ≥ 1) and `configuration` (a string, empty when the add-on has no configuration choice) come from the new `max_quantity`/`configuration` sheet columns described below. `price`, `cost`, and `tax_amount` for an option are already multiplied by its `quantity`, this endpoint doesn't need to do that multiplication itself. Products carry neither field, quantity/configuration are add-ons only.
 
@@ -74,7 +76,12 @@ Sits between the sign-in gate and the main product/add-on/summary layout (`dealS
 
 ## The install address / HubSpot contacts
 
-Shown in the Quote Summary panel as "Install Address" (`shipToSectionHtml()` in `app.js`, still `state.shipTo`/`ship_to` internally) once a deal is selected; there's nothing to show without one, since contacts are looked up per-deal, so this section is absent entirely on a skip-straight-to-price-lookup quote.
+Shown in the Quote Summary panel as "Install Address" (`shipToSectionHtml()` in `app.js`, still `state.shipTo`/`ship_to` internally). It has two forms:
+
+- **With a deal selected**: the full block described below — contact picker, Street/City/State/ZIP, all four mandatory (`shipToErrors()`), since this address is what gets written back onto the deal's HubSpot contact on push.
+- **Without one** (a skip-straight-to-price-lookup quote): collapses to just **City and Zip, both optional** (`taxLocationFieldsHtml()`), with a note that they're used for the sales tax rate and price book only and aren't saved anywhere. There's no contact to pick from (contacts are looked up per-deal) and nothing is ever pushed from a no-deal quote — the push button is already disabled without a deal — but both the tax rate and the pricebook lookups read city/zip either way, and before this these quotes were stuck on the taxes sheet's `zip_unknown` fallback with no way to say where the install actually is. Both forms write to the same `state.shipTo` fields via the same `set-ship-to-field` action, so nothing downstream cares which one rendered. The zip's 5-digit format check still applies here (it's a format complaint, not a "Required."), the rest of `shipToErrors()` is skipped entirely when there's no deal.
+
+The "Quote Details" column beside it (comment + expiration date) stays hidden without a deal, there's still no quote to attach either to.
 
 - On `chooseDeal()` (a manual pick from search results, or a successful `?hs_deal_id=` auto-lookup, see above), `app.js` fires off `GET https://n8n.californiamobility.com/webhook/camo-cpq/hs-fetch?fetch=contacts&search=<hs_deal_id>` (`fetchContactsForDeal()`/`loadContactsForDeal()`), in the background, not blocking the jump to the CPQ layout.
 - Response shape (as given, not yet independently re-verified against the live endpoint the way the deals/pricing shapes were): `{"contacts": [{"hs_contact_id": "...", "email": "...", "firstname": "...", "lastname": "...", "address_street": null, "address_city": "...", "address_state": null, "address_zip": "..."}]}`. Address fields can individually be `null`. Assumed, by analogy with `fetchDeals()`/the deals endpoint, to also return `200` with an **empty body** (not `{}`/`{"contacts": []}`) when a deal has no contacts; `fetchContactsForDeal()` handles that case the same way `fetchDeals()` does. Worth confirming against the live endpoint the first time this is actually exercised.
@@ -99,50 +106,108 @@ Added to the pricing endpoint alongside `products`/`options` specifically to sup
 - `option_skus` is a comma-joined string like the other SKU lists in this endpoint, not a JSON array, `app.js` splits it with the existing `splitSkuList()` helper.
 - `option_skus` can be an empty string (some packages have no add-ons).
 
-## The `taxes` array (part of the `camo-cpq-pricing` response) and zip-based tax rate lookup
+## The `pricebooks` sheet (part of the `camo-cpq-pricing` response) and which price column a quote reads
+
+A fifth sheet, `?sheet=pricebooks`, same `PRICING_URL` endpoint and same credential as the others, fetched alongside `options`/`packages`/`taxes` at load. Products and options no longer carry a single `price` column; they each carry a **set** of pricebook columns (`price_base`, plus `price_1` through `price_9` as the sheet grows them, the same set on both sheets), and this sheet decides which of those columns a given quote reads from, based on where the install is.
+
+Response is a **bare top-level array holding a single object with one row list**, same wrapper style as the taxes sheet:
+
+```json
+[
+  {
+    "pricebooks": [
+      { "row_number": 2, "location": "fallback", "location_type": "fallback", "pricebook": "price_base" },
+      { "row_number": 3, "location": "Los Angeles", "location_type": "stairlift_region", "pricebook": "price_base" },
+      { "row_number": 10, "location": "Downey", "location_type": "city", "pricebook": "price_1" },
+      { "row_number": 11, "location": "90001", "location_type": "zip", "pricebook": "price_2" }
+    ]
+  }
+]
+```
+
+- Like the taxes sheet, this one is **best-effort, not fatal** (`fetchPricebooks()` in `app.js`): a non-2xx, an unexpected shape, or a network failure just means no pricebook rows this session, so every price falls back to the base column, rather than a broken sign-in. `extractPricebookSheet()` also tolerates the unwrapped `{"pricebooks": [...]}` object and a bare array of rows, same defensiveness (and same reason) as `extractTaxSheet()`.
+- **Which columns exist is read off the data, not hardcoded**: `detectPriceColumns()` takes the first row of the products (and, separately, of the options) response and treats every key with `price` in its name as a pricebook column. A new `price_N` column starts working the moment it's added to the sheet, with no change needed in `app.js`. Each product/add-on keeps all of them in a `prices` map on the normalized object (`extractPrices()`), and each sheet's column list is kept on `state.priceColumns` for the availability check below.
+- **Resolution order deliberately mirrors `getTaxRate()`: city first, then zip, then the sheet's own `fallback` row, then the hardcoded `price_base`** (`resolvePricebook()`). So a deal in Downey takes `price_1`; a deal whose city isn't recognized but whose zip is `90001` takes `price_2`; anything else takes whatever the `fallback` row names; and if the sheet didn't load at all, `price_base`. City keys are lowercased on both sides (the city is free text off a contact record or the rep's typing), and zip keys are re-padded to 5 digits, both for the same reasons `normalizeTaxRates()` does it.
+- **A resolved pricebook only counts if the catalog actually carries that column.** If the pricebooks sheet points a location at `price_4` before that column exists on the products/options sheets (or after it's removed), the lookup falls through to the next step of the same chain, the sheet's `fallback` row and then `price_base`, and **reports itself as `Default → price_base`** rather than naming a column nothing is priced off. `isPricebookAvailable()` is the check; the raw location match is still available on its own via `matchPricebookLocation()`. The label on the margin line has to agree with the numbers beside it, an earlier version showed `90001 → price_2` while every product had quietly priced off `price_base`, which is exactly the confusion this avoids.
+  - A column has to be present on **both** the products and the options sheet to count. Pricing products off `price_2` while every add-on silently fell back to `price_base` would produce a quote nobody could explain. A sheet that returned no rows at all contributes no columns and is skipped rather than failing the check outright.
+  - Column presence is detected from each sheet's **first row** (`detectPriceColumns()`), i.e. effectively from its header, so this tracks whether the column exists, not whether every row has it filled in.
+- A **blank cell** in a column that does exist is a separate case, handled per row: `extractPrices()` leaves blanks (and non-numeric values) out of the row's price map entirely, so `priceFromBook()` falls back to that row's base price instead of quoting `$0`. A real `0` in the sheet is a number and is kept as one. The margin line still names the resolved column in this case, since the column does exist, only that one row's cell is empty, so **a half-filled `price_N` column will quote a mix of that column and base prices without saying so.** Filling the column completely is the fix; if that turns out to be a recurring problem, the check could be tightened to require every row.
+- The base column has shipped under more than one name as this settled (`price`, then `base_price`, then `price_base`); `BASE_PRICE_KEYS` treats all three as the base so a mid-rollout sheet still prices. `price_base` is the canonical name everywhere in `app.js`.
+- **`location_type: "stairlift_region"` rows are parsed and kept (`byRegion`) but never consulted.** Nothing in this app knows which region an address belongs to, the taxes sheet's `Stairlift Region` column is the only place that mapping exists and `normalizeTaxRates()` throws it away, and every region row currently points at `price_base` anyway. Region rows are also deliberately **not** matched by city name: "Los Angeles" is both a region and a city here, and matching them together would let a region row win a lookup the `city` rows were meant to answer. **If regions are meant to price differently from base, this needs a decision**: either the pricebooks sheet grows explicit city/zip rows per region, or `normalizeTaxRates()` starts keeping `Stairlift Region` so a zip can resolve to a region and this lookup can consult `byRegion` between the zip and fallback steps.
+- The resolved pricebook is shown to the rep alongside the margin, once "Show Margin" is toggled, as `Price Book: <matched location> → <column>` (e.g. `Price Book: Piedmont → price_2`, or `Price Book: Default → price_base` when neither city nor zip matched). The tax rate beside it got the same treatment, `Tax Rate: Piedmont → 10.25%`, so both numbers say *why* they are what they are. That's what `resolvePricebookMatch()`/`resolveTaxRate()` are for, they return `{ source, label }` next to the value; `resolvePricebook()`/`getTaxRate()` remain the value-only wrappers everything else calls. The label is the sheet's own spelling of the matched city (kept in a `cityNames` map on both lookups, since the rep's typing is matched case-insensitively and shouldn't be echoed back verbatim), or the matched 5-digit zip, or `Default`.
+- Nothing downstream knows there's more than one price column. `applyActivePricebook()` re-resolves the active column and rewrites `unit_price` on every product and add-on; the cards, Quote Summary, margin, tax, and the `update-hs` push body all keep reading a plain `unit_price` exactly as before. It's called once when pricing data loads, from `applyContactToShipTo()` (a contact's address landing in the ship-to fields), and from `setShipToField()` whenever the City or Zip field changes.
+- `setShipToField()` deliberately doesn't re-render per keystroke (see "Rendering approach"), but a pricebook switch changes the **product/add-on card** prices too, not just the summary panel, so it does need a full `render()`. That's gated on the active column actually changing, so typing `Downe…` still renders nothing and only the `y` that completes `Downey` triggers one render.
+- Costs are unaffected, there's still one `cost` column, so switching pricebooks moves price and margin but not cost.
+
+## The `taxes` sheet (part of the `camo-cpq-pricing` response) and city/zip-based tax rate lookup
 
 A fourth sheet, `?sheet=taxes`, same `PRICING_URL` endpoint as `products`/`options`/`packages`, same `Authorization: Bearer <idToken>` / dev-bypass `?p=<password>` credential as those three, and confirmed working correctly under both. It's fetched separately from them (not in the same all-or-nothing `Promise.all`, see `fetchTaxRates()` in `app.js`), so a miss here just means no tax rates loaded this session rather than a broken sign-in — a deliberate exception to the "any failure is fatal" rule the other three sheets use, since this one is newer and more likely to have rough edges while it settles in. Once it succeeds at least once, it's merged into the same combined pricing payload as `products`/`options`/`packages` and gets the same app-level cache treatment described below, plus the service worker's own offline/cache fallback underneath that, with no extra code.
 
-Response is `{"taxes": [...]}` (~1816 rows), same wrapped-object shape as `products`/`options`/`packages`; `fetchTaxRates()` in `app.js` also tolerates a bare top-level array (`Array.isArray(data) ? data : data.taxes || []`), since the n8n workflow briefly returned it unwrapped that way during initial testing. Each row:
+Response is a **bare top-level array holding a single object with two row lists**, `zip_taxes` (~1817 rows) and `city_taxes` (~483 rows), not the `{"taxes": [...]}` wrapper `products`/`options`/`packages` use. The two lists have **different column names for the same two values** — that's the sheet's own inconsistency, not a typo here:
 
 ```json
-{
-  "row_number": 2,
-  "Zip": 90001,
-  "City": "Los Angeles",
-  "County": "Los Angeles County",
-  "Stairlift Region": "Los Angeles",
-  "State": "CA",
-  "tax_rate": 0.0975,
-  "rate_type": "City"
-}
+[
+  {
+    "zip_taxes": [
+      {
+        "row_number": 2,
+        "Zip": 90001,
+        "City": "Los Angeles",
+        "County": "Los Angeles County",
+        "Stairlift Region": "Los Angeles",
+        "State": "CA",
+        "tax_rate": 0.0975,
+        "rate_type": "City"
+      }
+    ],
+    "city_taxes": [
+      {
+        "row_number": 2,
+        "Location": "Adelanto",
+        "Rate": 0.0775,
+        "County": "San Bernardino",
+        "Type": "City",
+        "Notes": ""
+      }
+    ]
+  }
+]
 ```
 
-Only `Zip` and `tax_rate` are used, everything else (`City`/`County`/`Stairlift Region`/`State`/`rate_type`/`row_number`) is thrown out. `normalizeTaxRates()` in `app.js` builds a plain zip-string -> `tax_rate` lookup (`state.taxRates.byZip`), re-padding each `Zip` to 5 digits since the sheet returns it as a bare number (e.g. `90001`), which would otherwise silently drop a leading zero on a zip outside CA's `9xxxx` range.
+Only `Zip`/`tax_rate` (zip rows) and `Location`/`Rate` (city rows) are used, everything else (`City`/`County`/`Stairlift Region`/`State`/`rate_type`/`Type`/`Notes`/`row_number`) is thrown out. Note the city rows also carry a stray key whose *name* is the CDTFA API URL the sheet was built from, ignored like the rest.
 
-The sheet carries one special row for this, always last in the response: `"Zip": "zip_unknown"` (a literal string, not a real zip), whose `tax_rate` is the fallback rate. `getTaxRate(zip)` (`app.js`) looks up `state.shipTo.zip` first and falls back to this `zip_unknown` rate whenever the ship-to zip is blank or isn't a recognized key, this is also what's shown/sent before a deal (and its zip) has been selected at all.
+`extractTaxSheet()` in `app.js` flattens the response down to `{ zip_taxes, city_taxes }` for `normalizeTaxRates()`, and deliberately still tolerates the older shapes this sheet shipped in while the n8n workflow settled: the unwrapped `{"zip_taxes": ..., "city_taxes": ...}` object, the legacy zip-only `{"taxes": [...]}` wrapper, and a legacy bare array of zip rows. The legacy shapes yield no city rows at all, which just means the city lookup below never matches and every rate comes from the zip fallback, exactly the old behavior. This matters beyond back-compat: the `localStorage` pricing cache stores the raw pre-normalization payload (see below), so a returning visitor can boot with a legacy-shaped cache written before this change.
 
-This rate is looked up from the editable "Install Address" zip (`state.shipTo.zip`, see below), the only zip captured anywhere in the app; it's shown next to the margin percentage once "Show Margin" is toggled (`summarySectionHtml()`), and it populates `tax_percentage` (as a percent, e.g. `9.75` for a `0.0975` rate) and `tax_location` (the zip itself) in the `update-hs` push body below, both of which used to be hardcoded stub values (`5` and `"12345"`) before this lookup existed. It also drives the actual `tax_amount` dollar figure everywhere it's computed (the Quote Summary display and the `update-hs` push body): `product cost * tax rate`, plus `add-on price * tax rate` for each selected add-on (add-on cost is not taxed). An earlier version of this formula also taxed each add-on's cost on top of its price and taxed the product's combined cost (product + all add-ons) rather than just the product's own cost, both double-counted and have been corrected.
+`normalizeTaxRates()` builds two lookups on `state.taxRates`:
 
-## The pricing data cache (options/packages/taxes; `products` is deliberately excluded)
+- `byCity`: city-name -> `Rate`, with **every key lowercased**, and `resolveTaxRate()` lowercases (and trims) the city it's given before matching, so a rep typing `san diego` or `SAN DIEGO` still matches the sheet's `San Diego`. The city comes either from a HubSpot contact record or from the rep's own typing, there's no reason to expect it to match the sheet's casing. `cityNames` keeps the same keys pointing at the sheet's own spelling, purely so the summary panel can display `Tax Rate: San Diego → …` instead of echoing back whatever the rep typed.
+- `byZip`: zip-string -> `tax_rate`, each `Zip` re-padded to 5 digits since the sheet returns it as a bare number (e.g. `90001`), which would otherwise silently drop a leading zero on a zip outside CA's `9xxxx` range.
+
+The zip rows carry one special row for this, always last in that list: `"Zip": "zip_unknown"` (a literal string, not a real zip), whose `tax_rate` is the fallback rate. There is no city-side equivalent.
+
+`getTaxRate(city, zip)` (`app.js`) resolves in that order: **city first, then zip, then the `zip_unknown` fallback.** City wins because it's the more precise signal wherever the sheet knows it — an unincorporated address inside a city's zip pays the county rate, and the zip rows collapse that distinction (they carry a `rate_type` of `City` vs `County` per zip, but only one rate either way). The `zip_unknown` rate is also what's shown/sent before a deal (and its address) has been selected at all.
+
+Both values come from the editable "Install Address" fields (`state.shipTo.city`/`state.shipTo.zip`, see below), the only address captured anywhere in the app — and captured on a no-deal price lookup too, which is the whole reason that block now shows a City/Zip-only variant instead of nothing at all. The resolved rate is shown next to the margin percentage once "Show Margin" is toggled (`summarySectionHtml()`), as `Tax Rate: <matched location> → <rate>%` alongside the pricebook's own `Price Book: <matched location> → <column>` (see the pricebooks section above for how those labels are built), and it populates `tax_percentage` (as a percent, e.g. `9.75` for a `0.0975` rate) and `tax_location` in the `update-hs` push body below, both of which used to be hardcoded stub values (`5` and `"12345"`) before this lookup existed. **`tax_location` is still the zip, even when the rate was resolved by city name** — it was left alone deliberately, since changing it is a change to the `update-hs` contract rather than to this lookup; worth deciding with whoever owns that workflow whether it should instead report the key the rate actually came from. It also drives the actual `tax_amount` dollar figure everywhere it's computed (the Quote Summary display and the `update-hs` push body): `product cost * tax rate`, plus `add-on price * tax rate` for each selected add-on (add-on cost is not taxed). An earlier version of this formula also taxed each add-on's cost on top of its price and taxed the product's combined cost (product + all add-ons) rather than just the product's own cost, both double-counted and have been corrected.
+
+## The pricing data cache (options/packages/taxes/pricebooks; `products` is deliberately excluded)
 
 `products` is split out from the other two core sheets (`fetchProductsSheet()`/`fetchProductsSheetWithDevPassword()` in `app.js`) and always fetched fresh, every single call, never through the cache described below. It's the sheet whose 401/403 response doubles as this session's live auth check, so it can't be allowed to go stale, an account whose access was just revoked needs to be caught immediately, not masked by a still-fresh cache of some other sheet. "Fetched fresh" still just means a plain `fetch()` call, so it goes through the service worker's own network-first-with-cache-fallback (see below) like any other request: fresh whenever the network's actually reachable, last-known-good from the service worker's cache when it isn't.
 
-The merged `options`/`packages`/`taxes` payload (the combined return value of `fetchOptionsPackagesAndTaxes()`/`fetchOptionsPackagesAndTaxesWithDevPassword()`) is cached separately, in `localStorage` (`cpq-pricing-cache`, raw pre-normalization shape, alongside the time it was fetched), since none of the three gate access on their own, they're just catalog data, so a routine sign-in doesn't need to cost a round-trip to n8n for them every time. `loadPricingData()` in `app.js` wraps both auth paths and decides what to do based on the cache's age:
+The merged `options`/`packages`/`taxes`/`pricebooks` payload (the combined return value of `fetchCatalogSheets()`/`fetchCatalogSheetsWithDevPassword()`) is cached separately, in `localStorage` (`cpq-pricing-cache-v2`, raw pre-normalization shape, alongside the time it was fetched), since none of the four gate access on their own, they're just catalog data, so a routine sign-in doesn't need to cost a round-trip to n8n for them every time. The key is versioned: a cache written before the pricebook columns landed has neither the new `price_*` columns on its options rows nor a `pricebooks` list at all, and serving one for up to 48 hours would silently price everything off the base column with no rows to switch on, so bumping the key (`cpq-pricing-cache` → `cpq-pricing-cache-v2`) retires those entries outright. The old shapes are still tolerated downstream (see `BASE_PRICE_KEYS`), the bump just avoids leaning on that on a fresh deploy. `loadPricingData()` in `app.js` wraps both auth paths and decides what to do based on the cache's age:
 
 - **Under 48 hours old**: used as-is, no network call at all.
 - **48 hours to 30 days old**: a fresh fetch is attempted if `navigator.onLine`, and the cache is overwritten on success; if that fetch fails for any reason other than an outright `unauthorized` result (a real 401/403), the stale-but-still-under-30-days cache is served instead of surfacing an error over what would otherwise just be a network hiccup. If the browser is offline, the cache is used without even attempting the fetch.
 - **30+ days old, or no cache yet**: always fetched fresh, no fallback; this is the outer bound past which stale pricing data shouldn't be trusted even as a last resort.
 
-An explicit page reload (`performance.getEntriesByType("navigation")[0].type === "reload"`, checked by `isExplicitPageReload()`) always forces a fresh fetch of `options`/`packages`/`taxes` regardless of the cache's age (`products` is already always-fresh, see above, so a reload changes nothing for it). This covers both a plain refresh (F5/Cmd+R) and a true cache-bypassing hard reload (Cmd+Shift+R/Ctrl+Shift+R); JS has no reliable, cross-browser way to tell those two apart, so both are treated as "the visitor explicitly asked for a fresh load," the safer failure mode for a live pricing tool than silently continuing to serve a cache the visitor is actively trying to shake loose.
+An explicit page reload (`performance.getEntriesByType("navigation")[0].type === "reload"`, checked by `isExplicitPageReload()`) always forces a fresh fetch of `options`/`packages`/`taxes`/`pricebooks` regardless of the cache's age (`products` is already always-fresh, see above, so a reload changes nothing for it). This covers both a plain refresh (F5/Cmd+R) and a true cache-bypassing hard reload (Cmd+Shift+R/Ctrl+Shift+R); JS has no reliable, cross-browser way to tell those two apart, so both are treated as "the visitor explicitly asked for a fresh load," the safer failure mode for a live pricing tool than silently continuing to serve a cache the visitor is actively trying to shake loose.
 
-This `options`/`packages`/`taxes` cache lives underneath (and is separate from) the service worker's own network-first-with-cache-fallback handling described below, it's what actually avoids the network call in the first place for those three; the service worker's own cache is still what serves any of the four sheets on a genuinely offline visit once a fetch is actually attempted (`products` always attempts one; `options`/`packages`/`taxes` only do once 30+ days stale, or on an explicit reload, while offline). It's also separate from the Google sign-in session cache (`GOOGLE_SESSION_STORAGE_KEY`, see below), which is about staying signed in, not about the pricing data itself; the caches don't interact.
+This `options`/`packages`/`taxes`/`pricebooks` cache lives underneath (and is separate from) the service worker's own network-first-with-cache-fallback handling described below, it's what actually avoids the network call in the first place for those four; the service worker's own cache is still what serves any of the five sheets on a genuinely offline visit once a fetch is actually attempted (`products` always attempts one; `options`/`packages`/`taxes`/`pricebooks` only do once 30+ days stale, or on an explicit reload, while offline). It's also separate from the Google sign-in session cache (`GOOGLE_SESSION_STORAGE_KEY`, see below), which is about staying signed in, not about the pricing data itself; the caches don't interact.
 
 ### Re-checking auth on resume, not just on load
 
 "`products` is always fetched fresh" above only actually holds if the boot code that calls `fetchPricingData()` runs in the first place, and that code (near the bottom of `app.js`, under `--- boot ---`) is one-time, top-level script execution — it does not automatically re-run just because the visitor comes back to an already-loaded page. Closing a tab and opening a new one to the same URL is a fresh navigation, so that's not an issue; but switching away and back, minimizing/restoring the window, or backgrounding and foregrounding this app once installed as a PWA (`manifest.json` supports "Add to Home Screen") can all resume the exact same JS execution without reloading anything, in which case the products-sheet auth check simply never fires again, even while online the whole time.
 
-`revalidateAuthOnResume()` in `app.js` covers this: it's wired to both `visibilitychange` (fires whenever the tab/window/app becomes visible again) and `pageshow` with `event.persisted` (specifically covers a same-page restore from the browser's back/forward cache, which doesn't reliably fire `visibilitychange` in every browser). Whenever either fires, if the visitor is already signed in (not the local dev bypass, which has no real token to re-check) and the browser reports itself online, it re-runs just `fetchProductsSheet()` with the stored session's ID token, the same auth check `fetchPricingData()` already does on a real load, without touching `options`/`packages`/`taxes` or anything else about the current session, so an in-progress product/add-on/deal selection is left alone. A 401/403 here is handled the same way a rejected stored-session replay is handled at boot: clear the stored session and reload straight into a clean sign-in screen, which can interrupt whatever the visitor was doing, accepted as the safer failure mode over continuing to let a revoked account use pricing data.
+`revalidateAuthOnResume()` in `app.js` covers this: it's wired to both `visibilitychange` (fires whenever the tab/window/app becomes visible again) and `pageshow` with `event.persisted` (specifically covers a same-page restore from the browser's back/forward cache, which doesn't reliably fire `visibilitychange` in every browser). Whenever either fires, if the visitor is already signed in (not the local dev bypass, which has no real token to re-check) and the browser reports itself online, it re-runs just `fetchProductsSheet()` with the stored session's ID token, the same auth check `fetchPricingData()` already does on a real load, without touching `options`/`packages`/`taxes`/`pricebooks` or anything else about the current session, so an in-progress product/add-on/deal selection is left alone. A 401/403 here is handled the same way a rejected stored-session replay is handled at boot: clear the stored session and reload straight into a clean sign-in screen, which can interrupt whatever the visitor was doing, accepted as the safer failure mode over continuing to let a revoked account use pricing data.
 
 ## Rendering approach
 
@@ -240,9 +305,9 @@ The `camo-cpq-pricing` webhook currently checks `?p=` against a fixed password. 
 
 **This section describes the endpoint's original password contract. `app.js` on `main` has already switched to sending `Authorization: Bearer <googleIdToken>` instead (see "Google sign-in" above); whether n8n has actually been updated to match isn't visible from this repo. See "What n8n needs to change" above; this section needs a pass once that's confirmed.**
 
-Request (original contract): `GET https://n8n.californiamobility.com/webhook/camo-cpq/pricing?p=<password>&sheet=<sheet>`, where `<sheet>` is one of `products`, `options`, or `packages`. Once n8n is migrated, the password query param goes away and the client instead sends `Authorization: Bearer <googleIdToken>`.
+Request (original contract): `GET https://n8n.californiamobility.com/webhook/camo-cpq/pricing?p=<password>&sheet=<sheet>`, where `<sheet>` is one of `products`, `options`, `packages`, `taxes`, or `pricebooks` (the last two documented in their own sections above). Once n8n is migrated, the password query param goes away and the client instead sends `Authorization: Bearer <googleIdToken>`.
 
-The n8n workflow behind this reads from a Google Sheet and can't fetch all three sheets in a single request without serializing them server-side, so `app.js` makes three separate calls, one per sheet, **in parallel** (`Promise.all`, see `fetchPricingData`), rather than one combined call. Omitting `sheet` entirely returns a `200` with an empty body, it's required.
+The n8n workflow behind this reads from a Google Sheet and can't fetch every sheet in a single request without serializing them server-side, so `app.js` makes one call per sheet, **in parallel** (`Promise.all`, see `fetchPricingData`/`fetchCatalogSheets`), rather than one combined call. Omitting `sheet` entirely returns a `200` with an empty body, it's required.
 
 This is currently a plain GET with no custom headers, so it does not trigger a CORS preflight today, it just needs the response itself to carry `Access-Control-Allow-Origin`, which it already does. Once migrated to the `Authorization` header, this stops being true, see point 6 under "What n8n needs to change" above, preflight `OPTIONS` handling will need to be added.
 
@@ -263,7 +328,9 @@ Each call returns only the one key matching its `sheet` value, confirmed by call
       "name": "FlowX with 180° turn",
       "customer_description": "Access Flow X 180 Curved Stairlift. ...",
       "manufacturer_description": "Curved Stairlift.  Package price for 1 single 180º turn",
-      "price": 15745,
+      "price_base": 15745,
+      "price_1": 16500,
+      "price_2": 17000,
       "cost": 10600,
       "photo_url": "",
       "category": "Access FlowX"
@@ -282,7 +349,9 @@ Each call returns only the one key matching its `sheet` value, confirmed by call
       "name": "Automatic Folding Footrest",
       "customer_description": "",
       "manufacturer_description": "Automatic folding footrest",
-      "price": 600,
+      "price_base": 600,
+      "price_1": 650,
+      "price_2": 700,
       "cost": 294,
       "configuration": "",
       "max_quantity": "",
@@ -306,7 +375,7 @@ There is no `product_categories` / `option_categories` list anymore, the endpoin
 Things that are easy to get wrong here, and did trip up earlier versions of this integration:
 
 - The top-level keys are `products` / `options`, not `productCategories` / `addonCategories` / `addons`.
-- Prices are under `price` / `cost`, not `unit_price` / `unit_cost`.
+- Costs are under `cost`, not `unit_cost`. Prices are no longer under a single `price` at all, they're the `price_base`/`price_1`…`price_9` pricebook columns, selected per quote by install location, see "The `pricebooks` sheet" above. `app.js` discovers which columns exist from the first row rather than hardcoding them, so nothing here needs changing when a `price_N` is added. **The `price_*` column names above are as specified when this was implemented, not re-verified against the live endpoint** the way the rest of this section's shapes were, since the `?p=` dev-bypass password no longer authenticates against n8n (see "Local development" below). Both `base_price` and the original `price` are still accepted as aliases for the base column (`BASE_PRICE_KEYS`), so a column named either way still prices correctly.
 - There are two description fields, `customer_description` and `manufacturer_description`. Either can be empty. For products, the app displays `manufacturer_description` (falling back to `customer_description` if that's blank); `customer_description` is kept as `customerDescription` on the normalized object for the HubSpot push, not shown in the UI. For add-ons, no description is shown at all, `customerDescription` is still kept on the normalized object for the same reason.
 - **`compatible_base_product_skus` lists a product's `base_sku`, not its `sku`.** A product's own `sku` is the specific variant (e.g. `access--flowx--180`), but add-on compatibility is scoped to the `base_sku` (e.g. `access--flowx`), which is shared across all variants of that base product. Matching an add-on's compatible list against `product.sku` instead of `product.base_sku` will silently show zero compatible add-ons for every product. `app.js` normalizes this into `parentBaseSkus` and matches against `product.baseSku`.
 - `compatible_base_product_skus` and `incompatible_option_skus` are comma-joined strings (e.g. `"bruno--cre-2110, bruno--cre-2110e"`, note the space after the comma), not JSON arrays. `app.js` splits and trims these into arrays (`normalizePricingData` / `splitSkuList`).
@@ -322,7 +391,9 @@ Since the `python3 -m http.server` in `.claude/launch.json` binds all interfaces
 
 ### Skipping Google Sign-In locally
 
-Google Identity Services is registered against specific origins (see "What's needed from GCP" above, currently just `http://localhost:4173`); a phone's LAN-IP origin isn't one of them, so the Google button may not work there at all. `app.js` (see "local dev auth bypass" comment near `fetchPricingData`) can skip Google entirely on both localhost and a phone-over-LAN-IP, still loading real pricing data via the old `?p=` password n8n still accepts:
+**Status, as of 2026-08-11: the bypass currently doesn't get data.** The password in the local `dev-auth.local.js` was tried directly against `?sheet=products|options|pricebooks&p=…` and every call came back `401 {"error":{"message":"Incorrect password"}}`. Either that stored password is stale or n8n has stopped accepting `?p=` at all (which would be consistent with the Google-token verification described above having gone live, though that still isn't confirmed from this repo). Worth checking against whoever owns the n8n workflow: if `?p=` is gone for good, this whole bypass needs replacing (e.g. a dev-only allowlisted Google account, or a separate dev token) rather than just having its password updated.
+
+Google Identity Services is registered against specific origins (see "What's needed from GCP" above, currently just `http://localhost:4173`); a phone's LAN-IP origin isn't one of them, so the Google button may not work there at all. `app.js` (see "local dev auth bypass" comment near `fetchPricingData`) can skip Google entirely on both localhost and a phone-over-LAN-IP, still loading real pricing data via the old `?p=` password:
 
 1. Copy `dev-auth.local.js.example` to `dev-auth.local.js` (same directory), fill in the password.
 2. `dev-auth.local.js` is gitignored, never committed, so the password never ships in source anyone could view on the live site.

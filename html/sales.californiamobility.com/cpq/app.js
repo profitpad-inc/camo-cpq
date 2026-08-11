@@ -93,9 +93,9 @@ const LOW_MARGIN_THRESHOLD = 30;
 // The pricing endpoint backs onto a Google Sheet and can't fetch all its
 // sheets in one request without serializing them server-side, so each sheet
 // is fetched with its own &sheet= call. `products` is split out from
-// `options`/`packages` below: it's always fetched fresh (see
-// fetchProductsSheet), the other two are cache-eligible (see
-// fetchOptionsPackagesAndTaxes/loadPricingData).
+// `options`/`packages`/`taxes`/`pricebooks` below: it's always fetched fresh
+// (see fetchProductsSheet), the rest are cache-eligible (see
+// fetchCatalogSheets/loadPricingData).
 const GOOGLE_UNAUTHORIZED_MESSAGE =
   "Your Google account isn't <a href=\"https://n8n.californiamobility.com/workflow/ZBPvOf0Se3qv5WM3/ab615d\" target=\"_blank\">authorized</a> to view pricing.  Email chris.becher@profitpad.com for help.";
 const DEV_BYPASS_UNAUTHORIZED_MESSAGE =
@@ -121,20 +121,84 @@ function checkPricingResponses(responses, unauthorizedMessage) {
 // reused for both the Bearer-token and dev-password auth paths below.
 //
 // Unlike products/options/packages (each wrapped as `{"<sheet>": [...]}`),
-// this sheet responds with a bare top-level array, not `{"taxes": [...]}`.
+// this sheet responds with a bare top-level array holding a single object with
+// two row lists, `zip_taxes` and `city_taxes` (see extractTaxSheet below for
+// the older shapes still tolerated).
 async function fetchTaxRates(fetchCall) {
   try {
     const res = await fetchCall();
     if (!res.ok) {
       console.warn(`[taxes] sheet=taxes returned ${res.status}, no tax rates loaded this session.`);
-      return [];
+      return { zip_taxes: [], city_taxes: [] };
     }
-    const data = await res.json();
-    return Array.isArray(data) ? data : data.taxes || [];
+    return extractTaxSheet(await res.json());
   } catch (e) {
     console.warn("[taxes] sheet=taxes fetch failed, no tax rates loaded this session.", e);
+    return { zip_taxes: [], city_taxes: [] };
+  }
+}
+
+// The taxes sheet has shipped in a few shapes as the n8n workflow settled in,
+// so normalize them all down to `{ zip_taxes, city_taxes }` here rather than
+// making the callers care:
+//   - current:  [{ "zip_taxes": [...], "city_taxes": [...] }]
+//   - unwrapped `{ "zip_taxes": [...], "city_taxes": [...] }`
+//   - legacy zip-only `{ "taxes": [...] }` or a bare array of zip rows
+// A legacy payload yields no city rows at all, which getTaxRate handles fine —
+// it just falls straight through to the zip lookup, as it always did.
+function extractTaxSheet(data) {
+  const entries = Array.isArray(data) ? data : [data];
+  const zipRows = [];
+  const cityRows = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    if (Array.isArray(entry.zip_taxes) || Array.isArray(entry.city_taxes)) {
+      zipRows.push(...(entry.zip_taxes || []));
+      cityRows.push(...(entry.city_taxes || []));
+      continue;
+    }
+    // legacy: a bare zip row, or the old `{ "taxes": [...] }` wrapper
+    if (Array.isArray(entry.taxes)) zipRows.push(...entry.taxes);
+    else zipRows.push(entry);
+  }
+  return { zip_taxes: zipRows, city_taxes: cityRows };
+}
+
+// Best-effort for the same reason as fetchTaxRates above: this sheet is new,
+// and a miss here just means every price falls back to the base pricebook
+// column for this session rather than a broken sign-in.
+//
+// Same bare-array-holding-one-object shape as the taxes sheet:
+// `[{ "pricebooks": [...] }]`.
+async function fetchPricebooks(fetchCall) {
+  try {
+    const res = await fetchCall();
+    if (!res.ok) {
+      console.warn(
+        `[pricebooks] sheet=pricebooks returned ${res.status}, falling back to the base pricebook.`,
+      );
+      return [];
+    }
+    return extractPricebookSheet(await res.json());
+  } catch (e) {
+    console.warn("[pricebooks] sheet=pricebooks fetch failed, falling back to the base pricebook.", e);
     return [];
   }
+}
+
+// Flattens the documented `[{ "pricebooks": [...] }]` down to a plain row
+// array, also tolerating the unwrapped `{ "pricebooks": [...] }` object and a
+// bare array of rows — same defensiveness as extractTaxSheet above, and for
+// the same reason: this sheet is new enough that its wrapper may still move.
+function extractPricebookSheet(data) {
+  const entries = Array.isArray(data) ? data : [data];
+  const rows = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    if (Array.isArray(entry.pricebooks)) rows.push(...entry.pricebooks);
+    else rows.push(entry);
+  }
+  return rows;
 }
 
 // This is the session's live auth check: fetched fresh every single call,
@@ -154,40 +218,43 @@ async function fetchProductsSheet(idToken) {
   return data.products || [];
 }
 
-// options/packages/taxes are just catalog data, not part of the auth check
-// above, so they're fine to serve from the cache below rather than always
-// hitting the network.
-async function fetchOptionsPackagesAndTaxes(idToken) {
+// options/packages/taxes/pricebooks are just catalog data, not part of the
+// auth check above, so they're fine to serve from the cache below rather than
+// always hitting the network.
+async function fetchCatalogSheets(idToken) {
+  const authHeaders = { Authorization: `Bearer ${idToken}` };
   const responses = await Promise.all(
     ["options", "packages"].map((sheet) =>
-      fetch(`${PRICING_URL}?sheet=${sheet}`, { headers: { Authorization: `Bearer ${idToken}` } }),
+      fetch(`${PRICING_URL}?sheet=${sheet}`, { headers: authHeaders }),
     ),
   );
   checkPricingResponses(responses, GOOGLE_UNAUTHORIZED_MESSAGE);
 
   const [options, packages] = await Promise.all(responses.map((res) => res.json()));
-  const taxes = await fetchTaxRates(() =>
-    fetch(`${PRICING_URL}?sheet=taxes`, { headers: { Authorization: `Bearer ${idToken}` } }),
-  );
+  const [taxes, pricebooks] = await Promise.all([
+    fetchTaxRates(() => fetch(`${PRICING_URL}?sheet=taxes`, { headers: authHeaders })),
+    fetchPricebooks(() => fetch(`${PRICING_URL}?sheet=pricebooks`, { headers: authHeaders })),
+  ]);
   return {
     options: options.options || [],
     packages: packages.packages || [],
     taxes,
+    pricebooks,
   };
 }
 
 async function fetchPricingData(idToken) {
   const [products, rest] = await Promise.all([
     fetchProductsSheet(idToken),
-    loadPricingData(() => fetchOptionsPackagesAndTaxes(idToken)),
+    loadPricingData(() => fetchCatalogSheets(idToken)),
   ]);
   return { products, ...rest };
 }
 
-// --- pricing data cache (options/packages/taxes) ---
+// --- pricing data cache (options/packages/taxes/pricebooks) ---
 // n8n's sheet-backed pricing endpoint doesn't change often enough to justify
 // a network round-trip on every single sign-in, so the merged
-// options/packages/taxes payload (products is excluded, see
+// options/packages/taxes/pricebooks payload (products is excluded, see
 // fetchProductsSheet above) is cached in localStorage, alongside the fetch
 // time, and reused as-is:
 //   - under 48 hours old: used straight away, no network call at all.
@@ -204,7 +271,14 @@ async function fetchPricingData(idToken) {
 // age — JS can't reliably tell a plain reload apart from a hard one across
 // browsers, so both are treated as "the visitor explicitly asked for a
 // fresh load," which is the safer failure mode for a live pricing tool.
-const PRICING_CACHE_STORAGE_KEY = "cpq-pricing-cache";
+// Key is versioned: the options sheet's single `price` column became the
+// price_base/price_1..price_9 pricebook columns, and the payload gained a
+// `pricebooks` list, so a cache written before that change has neither. Rather
+// than serve one for up to 48 hours (silently pricing everything off the base
+// column with no pricebook rows to switch on), bumping the key retires those
+// entries outright. The pre-pricebook shapes are still tolerated downstream —
+// see BASE_PRICE_KEYS — this just avoids leaning on that on a fresh deploy.
+const PRICING_CACHE_STORAGE_KEY = "cpq-pricing-cache-v2";
 const PRICING_CACHE_SOFT_TTL_MS = 48 * 60 * 60 * 1000;
 const PRICING_CACHE_HARD_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -239,9 +313,9 @@ function isExplicitPageReload() {
   }
 }
 
-// `fetchFresh` is a thunk wrapping either fetchOptionsPackagesAndTaxes(idToken)
-// or fetchOptionsPackagesAndTaxesWithDevPassword(password), so this cache
-// layer works the same for both auth paths.
+// `fetchFresh` is a thunk wrapping either fetchCatalogSheets(idToken) or
+// fetchCatalogSheetsWithDevPassword(password), so this cache layer works the
+// same for both auth paths.
 async function loadPricingData(fetchFresh) {
   const cached = readPricingCache();
   const ageMs = cached ? Date.now() - cached.fetchedAt : Infinity;
@@ -310,7 +384,7 @@ async function fetchProductsSheetWithDevPassword(password) {
   return data.products || [];
 }
 
-async function fetchOptionsPackagesAndTaxesWithDevPassword(password) {
+async function fetchCatalogSheetsWithDevPassword(password) {
   const responses = await Promise.all(
     ["options", "packages"].map((sheet) =>
       fetch(`${PRICING_URL}?sheet=${sheet}&p=${encodeURIComponent(password)}`),
@@ -319,20 +393,22 @@ async function fetchOptionsPackagesAndTaxesWithDevPassword(password) {
   checkPricingResponses(responses, DEV_BYPASS_UNAUTHORIZED_MESSAGE);
 
   const [options, packages] = await Promise.all(responses.map((res) => res.json()));
-  const taxes = await fetchTaxRates(() =>
-    fetch(`${PRICING_URL}?sheet=taxes&p=${encodeURIComponent(password)}`),
-  );
+  const [taxes, pricebooks] = await Promise.all([
+    fetchTaxRates(() => fetch(`${PRICING_URL}?sheet=taxes&p=${encodeURIComponent(password)}`)),
+    fetchPricebooks(() => fetch(`${PRICING_URL}?sheet=pricebooks&p=${encodeURIComponent(password)}`)),
+  ]);
   return {
     options: options.options || [],
     packages: packages.packages || [],
     taxes,
+    pricebooks,
   };
 }
 
 async function fetchPricingDataWithDevPassword(password) {
   const [products, rest] = await Promise.all([
     fetchProductsSheetWithDevPassword(password),
-    loadPricingData(() => fetchOptionsPackagesAndTaxesWithDevPassword(password)),
+    loadPricingData(() => fetchCatalogSheetsWithDevPassword(password)),
   ]);
   return { products, ...rest };
 }
@@ -350,6 +426,11 @@ async function authenticateWithDevBypass(password) {
     state.addonCategories = data.addonCategories;
     state.packages = data.packages;
     state.taxRates = data.taxRates;
+    state.pricebooks = data.pricebooks;
+    state.priceColumns = data.priceColumns;
+    // Points every unit_price at the right pricebook column before anything
+    // reads one; re-run whenever the install city/zip changes.
+    applyActivePricebook();
     state.authed = true;
     state.devBypass = true;
     state.userEmail = "chris.becher@profitpad.com";
@@ -500,15 +581,26 @@ function uniqueInOrder(values) {
   return result;
 }
 
-// Zip -> sales tax rate lookup (see sheet=taxes). Every field but Zip/tax_rate
-// is thrown out, this app has no use for city/county/state/rate_type. The
-// sheet carries one special "zip_unknown" row (its Zip value is literally
+// City -> and zip -> sales tax rate lookups (see sheet=taxes). The city rows
+// (`city_taxes`, keyed on `Location`/`Rate`) are the primary lookup, the zip
+// rows (`zip_taxes`, keyed on `Zip`/`tax_rate`) are the fallback; see
+// getTaxRate. Every other field on both is thrown out, this app has no use for
+// county/state/rate_type/notes.
+//
+// The zip rows carry one special "zip_unknown" row (its Zip value is literally
 // that string, not a real zip) whose tax_rate is the fallback used whenever
-// the ship-to zip is blank or isn't one of the sheet's recognized zips.
+// neither the ship-to city nor its zip is one of the sheet's recognized keys.
 function normalizeTaxRates(rawTaxes) {
+  const { zip_taxes: zipRows, city_taxes: cityRows } = extractTaxSheet(rawTaxes || []);
   const byZip = {};
+  const byCity = {};
+  // lowercased city key -> the sheet's own spelling of it, so the summary panel
+  // can show which row a rate came from ("Piedmont → 10.25%") in the sheet's
+  // casing rather than whatever the rep happened to type; see resolveTaxRate.
+  const cityNames = {};
   let unknownRate = 0;
-  for (const row of rawTaxes || []) {
+
+  for (const row of zipRows) {
     const rate = Number(row.tax_rate) || 0;
     if (row.Zip === "zip_unknown") {
       unknownRate = rate;
@@ -520,53 +612,290 @@ function normalizeTaxRates(rawTaxes) {
     const zip = String(row.Zip ?? "").trim().padStart(5, "0");
     if (zip) byZip[zip] = rate;
   }
-  return { byZip, unknownRate };
+
+  for (const row of cityRows) {
+    // Keys are lowercased (and the lookup lowercases too, see getTaxRate) so a
+    // rep typing "san diego" or "SAN DIEGO" still matches the sheet's
+    // "San Diego". Whatever the contact record or the rep typed is free text,
+    // there's no reason to expect it to match the sheet's casing.
+    const label = String(row.Location ?? "").trim();
+    const city = label.toLowerCase();
+    if (city) {
+      byCity[city] = Number(row.Rate) || 0;
+      cityNames[city] = label;
+    }
+  }
+
+  return { byZip, byCity, cityNames, unknownRate };
 }
 
-// Falls back to the sheet's "zip_unknown" rate whenever no zip is entered or
-// the entered zip isn't a recognized key, same convention the sheet itself
-// uses.
-function getTaxRate(zip) {
-  const trimmed = String(zip || "").trim();
-  if (trimmed && Object.prototype.hasOwnProperty.call(state.taxRates.byZip, trimmed)) {
-    return state.taxRates.byZip[trimmed];
+// Shown in place of a matched city/zip whenever a lookup falls through to the
+// sheet's own fallback row (the taxes sheet's "zip_unknown" rate, the
+// pricebooks sheet's "fallback" row), so the summary panel can always say
+// *why* a rate/pricebook is what it is rather than showing a bare number.
+const LOCATION_FALLBACK_LABEL = "Default";
+
+// City first, zip second: an unincorporated address inside a city's zip pays
+// the county rate, so the city name is the more precise signal when the sheet
+// recognizes it. Falls back to the zip rows whenever the city is blank or
+// unrecognized, and finally to the sheet's own "zip_unknown" rate when neither
+// matches, same convention the sheet itself uses.
+//
+// Returns `{ rate, source, label }` rather than just the rate so the summary
+// panel can show which key the rate actually came from; getTaxRate below is
+// the rate-only wrapper everything that doesn't care uses.
+function resolveTaxRate(city, zip) {
+  const { byCity, cityNames, byZip, unknownRate } = state.taxRates;
+  const cityKey = String(city || "").trim().toLowerCase();
+  if (cityKey && Object.prototype.hasOwnProperty.call(byCity, cityKey)) {
+    return { rate: byCity[cityKey], source: "city", label: cityNames[cityKey] || cityKey };
   }
-  return state.taxRates.unknownRate;
+  const trimmedZip = String(zip || "").trim();
+  if (trimmedZip && Object.prototype.hasOwnProperty.call(byZip, trimmedZip)) {
+    return { rate: byZip[trimmedZip], source: "zip", label: trimmedZip };
+  }
+  return { rate: unknownRate, source: "fallback", label: LOCATION_FALLBACK_LABEL };
+}
+
+function getTaxRate(city, zip) {
+  return resolveTaxRate(city, zip).rate;
+}
+
+// --- pricebooks: which price column a quote reads from ---
+// Products and options no longer carry a single `price`. They each carry a set
+// of pricebook columns — `price_base`, plus `price_1` through `price_9` as the
+// sheet grows them — and both sheets carry the same set. Which column applies
+// is decided per quote by where the install is, via the pricebooks sheet
+// (`?sheet=pricebooks`): one row per location, each naming a `pricebook`
+// column, tagged with a `location_type` of "city", "zip", "stairlift_region"
+// or "fallback".
+//
+// Resolution order deliberately mirrors getTaxRate above: city first, then
+// zip, then the sheet's own "fallback" row, and finally the hardcoded base
+// column if the sheet didn't load at all (it's best-effort, see
+// fetchPricebooks). So a deal in Downey takes price_1; a deal with no
+// recognized city but a zip of 90001 takes price_2; anything else takes
+// whatever the fallback row names.
+//
+// stairlift_region rows are parsed and kept on `byRegion` but never consulted:
+// nothing in this app knows which region an address belongs to (the taxes
+// sheet's "Stairlift Region" column is the only place that mapping exists, and
+// normalizeTaxRates throws it away), and every region row currently points at
+// price_base anyway. Region rows are also deliberately not matched by city
+// name — "Los Angeles" is both a region and a city, and conflating them would
+// let a region row win a lookup the city rows were meant to answer.
+const BASE_PRICEBOOK = "price_base";
+// The base column has shipped under more than one name (the original `price`,
+// and `base_price` before it settled on `price_base`); treat them as
+// interchangeable so a mid-rollout sheet, or a pre-bump cached payload, still
+// prices instead of reading 0.
+const BASE_PRICE_KEYS = [BASE_PRICEBOOK, "base_price", "price"];
+
+function normalizePricebooks(rawPricebooks) {
+  const byCity = {};
+  const byZip = {};
+  const byRegion = {};
+  // lowercased city key -> the sheet's own spelling, same purpose as
+  // normalizeTaxRates' cityNames above; see resolvePricebookMatch.
+  const cityNames = {};
+  let fallback = BASE_PRICEBOOK;
+
+  for (const row of extractPricebookSheet(rawPricebooks || [])) {
+    const book = String(row.pricebook ?? "").trim();
+    const location = String(row.location ?? "").trim();
+    if (!book) continue;
+    switch (String(row.location_type ?? "").trim().toLowerCase()) {
+      case "fallback":
+        fallback = book;
+        break;
+      case "city":
+        // Lowercased on both sides (see resolvePricebookMatch), same reasoning
+        // as normalizeTaxRates' byCity: the city is free text off a contact
+        // record or the rep's own typing, so its casing can't be relied on.
+        if (location) {
+          byCity[location.toLowerCase()] = book;
+          cityNames[location.toLowerCase()] = location;
+        }
+        break;
+      case "zip":
+        // Zips can come back from the sheet as bare numbers, so re-pad to 5
+        // digits before keying on them, same as normalizeTaxRates' byZip.
+        if (location) byZip[location.padStart(5, "0")] = book;
+        break;
+      case "stairlift_region":
+        if (location) byRegion[location.toLowerCase()] = book;
+        break;
+    }
+  }
+
+  return { byCity, byZip, byRegion, cityNames, fallback };
+}
+
+// The city/zip/fallback lookup on its own, before checking whether the column
+// it names actually exists in the loaded catalog; resolvePricebookMatch below
+// is what callers want.
+function matchPricebookLocation(city, zip) {
+  const { byCity, byZip, cityNames, fallback } = state.pricebooks;
+  const cityKey = String(city || "").trim().toLowerCase();
+  if (cityKey && Object.prototype.hasOwnProperty.call(byCity, cityKey)) {
+    return { book: byCity[cityKey], source: "city", label: cityNames[cityKey] || cityKey };
+  }
+  const zipKey = String(zip || "").trim();
+  if (zipKey && Object.prototype.hasOwnProperty.call(byZip, zipKey)) {
+    return { book: byZip[zipKey], source: "zip", label: zipKey };
+  }
+  return { book: fallback || BASE_PRICEBOOK, source: "fallback", label: LOCATION_FALLBACK_LABEL };
+}
+
+// True when the products and options sheets actually carry the named column, so
+// a pricebook the pricebooks sheet points at before those columns exist (or
+// after one is removed) isn't reported as being in use when it can't be.
+// Checked against both sheets, and a column has to be on both to count: pricing
+// products off price_2 while every add-on silently fell back to price_base
+// would be a quote nobody could explain. A sheet that returned no rows at all
+// contributes no columns and is skipped rather than failing every check.
+function isPricebookAvailable(book) {
+  if (book === BASE_PRICEBOOK) return true;
+  const columnSets = [state.priceColumns.products, state.priceColumns.options].filter(
+    (columns) => columns.length > 0,
+  );
+  if (!columnSets.length) return false;
+  return columnSets.every((columns) => columns.includes(book));
+}
+
+// Returns `{ book, source, label }`, same shape and same reason as
+// resolveTaxRate above: the summary panel shows which key picked the pricebook,
+// not just which pricebook was picked. resolvePricebook below is the
+// book-only wrapper.
+//
+// A location whose pricebook column isn't in the catalog falls through to the
+// next step of the same chain (the sheet's fallback row, then price_base) and
+// reports itself that way, rather than naming a column nothing is actually
+// priced off — the label has to match what the numbers beside it did.
+function resolvePricebookMatch(city, zip) {
+  const match = matchPricebookLocation(city, zip);
+  if (isPricebookAvailable(match.book)) return match;
+
+  const sheetFallback = state.pricebooks.fallback || BASE_PRICEBOOK;
+  const book = isPricebookAvailable(sheetFallback) ? sheetFallback : BASE_PRICEBOOK;
+  return { book, source: "fallback", label: LOCATION_FALLBACK_LABEL };
+}
+
+function resolvePricebook(city, zip) {
+  return resolvePricebookMatch(city, zip).book;
+}
+
+// Reading the first row's keys is the sheet's own contract for this: any key
+// with "price" in its name is a pricebook column, so a new price_N column
+// starts working here the moment it's added to the sheet, with no change
+// needed on this side. Products and options are read separately (same set
+// expected on both, but each is detected from its own first row rather than
+// assuming that).
+function detectPriceColumns(rows) {
+  const first = (rows || [])[0];
+  if (!first || typeof first !== "object") return [];
+  return Object.keys(first).filter((key) => key.toLowerCase().includes("price"));
+}
+
+// Pulls one row's pricebook columns into a { column: number } map, so
+// applyActivePricebook() can repoint unit_price at any of them later without
+// re-fetching anything. `price_base` is always populated, under that canonical
+// name whichever alias the row actually used, since it's the last-resort
+// fallback in priceFromBook below.
+//
+// A blank (or non-numeric) cell is left out of the map entirely rather than
+// stored as 0, so a row that just hasn't been filled in for a column the rest
+// of the sheet has falls back to its base price instead of quoting $0. A real
+// 0 in the sheet is a number and is kept as one.
+function extractPrices(row, priceColumns) {
+  const prices = {};
+  for (const key of priceColumns) {
+    const value = row[key];
+    if (value === "" || value === null || value === undefined) continue;
+    const price = Number(value);
+    if (Number.isFinite(price)) prices[key] = price;
+  }
+  const baseKey = BASE_PRICE_KEYS.find((key) => key in row);
+  prices[BASE_PRICEBOOK] = baseKey ? Number(row[baseKey]) || 0 : 0;
+  return prices;
+}
+
+// Falls back to the base column whenever the resolved pricebook names a column
+// this row doesn't actually have, e.g. the sheet points a location at price_4
+// before that column exists on the products/options sheets.
+function priceFromBook(item, book) {
+  const prices = item.prices || {};
+  return typeof prices[book] === "number" ? prices[book] : prices[BASE_PRICEBOOK] || 0;
+}
+
+// Repoints every product's and add-on's unit_price at whichever pricebook
+// column the current install-address city/zip resolves to. Everything
+// downstream (cards, summary, margin, the HubSpot push) keeps reading a plain
+// unit_price, so this is the only place that knows there's more than one price
+// column at all.
+//
+// Returns true when the active column actually changed, which is the caller's
+// cue that the product/add-on cards need re-rendering too, not just the
+// summary panel.
+function applyActivePricebook() {
+  const book = resolvePricebook(state.shipTo.city, state.shipTo.zip);
+  const changed = book !== state.activePricebook;
+  state.activePricebook = book;
+  for (const product of state.products) product.unit_price = priceFromBook(product, book);
+  for (const addon of state.addons) addon.unit_price = priceFromBook(addon, book);
+  return changed;
 }
 
 function normalizePricingData(raw) {
-  const products = (raw.products || []).map((p) => ({
-    sku: p.sku,
-    baseSku: p.base_sku,
-    name: p.name,
-    description: p.manufacturer_description || "",
-    // kept for the HubSpot push, which should eventually send the customer-facing copy instead
-    customerDescription: p.customer_description || "",
-    category: p.category,
-    unit_price: Number(p.price) || 0,
-    unit_cost: Number(p.cost) || 0,
-    // the HubSpot product dropdown value for this product, kept for the HubSpot push
-    hsProduct: p.hs_product || "",
-  }));
+  // Each sheet's pricebook columns, detected from its own first row; see
+  // detectPriceColumns/extractPrices above.
+  const productPriceColumns = detectPriceColumns(raw.products);
+  const optionPriceColumns = detectPriceColumns(raw.options);
 
-  const addons = (raw.options || []).map((o) => ({
-    sku: o.sku,
-    name: o.name,
-    // not shown in the add-on cards, kept only for the HubSpot push and search
-    description: o.manufacturer_description || "",
-    customerDescription: o.customer_description || "",
-    category: o.category,
-    unit_price: Number(o.price) || 0,
-    unit_cost: Number(o.cost) || 0,
-    // compatible_base_product_skus lists product base_sku values, not full product skus
-    parentBaseSkus: splitSkuList(o.compatible_base_product_skus),
-    incompatible_skus: splitSkuList(o.incompatible_option_skus),
-    // comma-joined list of configuration choices, same convention as the
-    // other multi-value sheet columns above; empty when the add-on has no
-    // configuration choice at all
-    configurations: splitSkuList(o.configuration),
-    maxQuantity: Math.max(1, Math.floor(Number(o.max_quantity)) || 1),
-  }));
+  const products = (raw.products || []).map((p) => {
+    const prices = extractPrices(p, productPriceColumns);
+    return {
+      sku: p.sku,
+      baseSku: p.base_sku,
+      name: p.name,
+      description: p.manufacturer_description || "",
+      // kept for the HubSpot push, which should eventually send the customer-facing copy instead
+      customerDescription: p.customer_description || "",
+      category: p.category,
+      // every pricebook column this row carries, kept so applyActivePricebook()
+      // can switch between them as the install city/zip changes
+      prices,
+      // starts on the base column; applyActivePricebook() repoints it at
+      // whichever column the install address resolves to
+      unit_price: prices[BASE_PRICEBOOK],
+      unit_cost: Number(p.cost) || 0,
+      // the HubSpot product dropdown value for this product, kept for the HubSpot push
+      hsProduct: p.hs_product || "",
+    };
+  });
+
+  const addons = (raw.options || []).map((o) => {
+    const prices = extractPrices(o, optionPriceColumns);
+    return {
+      sku: o.sku,
+      name: o.name,
+      // not shown in the add-on cards, kept only for the HubSpot push and search
+      description: o.manufacturer_description || "",
+      customerDescription: o.customer_description || "",
+      category: o.category,
+      prices,
+      unit_price: prices[BASE_PRICEBOOK],
+      unit_cost: Number(o.cost) || 0,
+      // compatible_base_product_skus lists product base_sku values, not full product skus
+      parentBaseSkus: splitSkuList(o.compatible_base_product_skus),
+      incompatible_skus: splitSkuList(o.incompatible_option_skus),
+      // comma-joined list of configuration choices, same convention as the
+      // other multi-value sheet columns above; empty when the add-on has no
+      // configuration choice at all
+      configurations: splitSkuList(o.configuration),
+      maxQuantity: Math.max(1, Math.floor(Number(o.max_quantity)) || 1),
+    };
+  });
 
   const packages = (raw.packages || []).map((pkg) => ({
     packageName: pkg.package_name,
@@ -584,6 +913,10 @@ function normalizePricingData(raw) {
     addons,
     packages,
     taxRates: normalizeTaxRates(raw.taxes),
+    pricebooks: normalizePricebooks(raw.pricebooks),
+    // which pricebook columns each sheet actually carries; see
+    // isPricebookAvailable
+    priceColumns: { products: productPriceColumns, options: optionPriceColumns },
   };
 }
 
@@ -608,9 +941,18 @@ const state = {
   productCategories: [],
   addonCategories: [],
   packages: [],
-  // zip -> tax rate lookup (see sheet=taxes), plus the sheet's zip_unknown
-  // fallback rate; see normalizeTaxRates/getTaxRate.
-  taxRates: { byZip: {}, unknownRate: 0 },
+  // city -> and zip -> tax rate lookups (see sheet=taxes), plus the sheet's
+  // zip_unknown fallback rate; see normalizeTaxRates/getTaxRate.
+  taxRates: { byZip: {}, byCity: {}, cityNames: {}, unknownRate: 0 },
+  // city/zip/region -> pricebook column lookups (see sheet=pricebooks), plus
+  // the sheet's own fallback column; see normalizePricebooks/resolvePricebook.
+  pricebooks: { byCity: {}, byZip: {}, byRegion: {}, cityNames: {}, fallback: BASE_PRICEBOOK },
+  // the pricebook columns the products/options sheets actually carry, detected
+  // from each sheet's first row; see detectPriceColumns/isPricebookAvailable
+  priceColumns: { products: [], options: [] },
+  // the pricebook column every unit_price currently reflects, re-resolved from
+  // the install address by applyActivePricebook()
+  activePricebook: BASE_PRICEBOOK,
 
   // "deal-select" (choose an existing deal or skip to a price lookup) or
   // "cpq" (the main product/add-on/summary layout)
@@ -794,6 +1136,11 @@ async function authenticateWithGoogle(idToken, isStoredSessionReplay = false) {
     state.addonCategories = data.addonCategories;
     state.packages = data.packages;
     state.taxRates = data.taxRates;
+    state.pricebooks = data.pricebooks;
+    state.priceColumns = data.priceColumns;
+    // Points every unit_price at the right pricebook column before anything
+    // reads one; re-run whenever the install city/zip changes.
+    applyActivePricebook();
     state.authed = true;
     const claims = decodeIdTokenPayload(idToken);
     state.userEmail = claims?.email || null;
@@ -847,7 +1194,10 @@ function signOut() {
   state.productCategories = [];
   state.addonCategories = [];
   state.packages = [];
-  state.taxRates = { byZip: {}, unknownRate: 0 };
+  state.taxRates = { byZip: {}, byCity: {}, cityNames: {}, unknownRate: 0 };
+  state.pricebooks = { byCity: {}, byZip: {}, byRegion: {}, cityNames: {}, fallback: BASE_PRICEBOOK };
+  state.priceColumns = { products: [], options: [] };
+  state.activePricebook = BASE_PRICEBOOK;
   state.step = "deal-select";
   state.selectedDeal = null;
   state.dealIdNotFound = null;
@@ -913,6 +1263,10 @@ function applyContactToShipTo(contact) {
     state: contact?.address_state || "",
     zip: contact?.address_zip || "",
   };
+  // This address is one of the two things that decides which pricebook column
+  // prices come from (the other is the rep typing into those same fields, see
+  // setShipToField); callers all re-render after this, so no render here.
+  applyActivePricebook();
 }
 
 // Fetches the contacts on a deal once it's chosen, so the ship-to address
@@ -1214,22 +1568,38 @@ function setShipToField(field, value) {
   // reconciling renderSummary() on blur in the focusout listener below.
   state.shipTo[field] = field === "zip" ? value.replace(/[^\d]/g, "").slice(0, 5) : value;
   state.pricingDirty = true;
+  // City and zip drive which pricebook column every price is read from, not
+  // just the tax rate, and a column switch changes the product/add-on card
+  // prices too, not only the summary panel — so that one case does need a full
+  // re-render. It's gated on the column actually changing, so the
+  // no-render-per-keystroke behavior above still holds for every keystroke
+  // that doesn't flip it (typing "Downe…" renders nothing, the "y" that
+  // completes "Downey" renders once).
+  if ((field === "city" || field === "zip") && applyActivePricebook()) {
+    render();
+  }
 }
 
 function isZipValid() {
   return state.shipTo.zip === "" || /^\d{5}$/.test(state.shipTo.zip);
 }
 
-// All install-address fields are mandatory (the ship-to block only shows once
-// a deal is selected, so this only applies then). Returns a { field: message }
-// map of just the invalid fields; an empty object means the address is
-// complete. Like the zip error, these settle on blur via the focusout
-// renderSummary() below, not on every keystroke.
+// All install-address fields are mandatory, but only on a deal-backed quote —
+// that address is what gets written back onto the deal's HubSpot contact. On a
+// skip-straight-to-price-lookup quote there's nothing to push, so the City/Zip
+// fields shown there (see shipToSectionHtml) exist purely to drive the tax rate
+// lookup and are entirely optional; a blank address just falls back to the
+// taxes sheet's zip_unknown rate, same as before those fields were shown at
+// all. Returns a { field: message } map of just the invalid fields; an empty
+// object means the address is complete. Like the zip error, these settle on
+// blur via the focusout renderSummary() below, not on every keystroke.
 const SHIP_TO_REQUIRED_FIELDS = ["street", "city", "state", "zip"];
 function shipToErrors() {
   const errors = {};
-  for (const key of SHIP_TO_REQUIRED_FIELDS) {
-    if (!String(state.shipTo[key]).trim()) errors[key] = "Required.";
+  if (state.selectedDeal) {
+    for (const key of SHIP_TO_REQUIRED_FIELDS) {
+      if (!String(state.shipTo[key]).trim()) errors[key] = "Required.";
+    }
   }
   // Only layer the format message on top once something's actually been typed
   // (an empty zip is already covered by "Required." above).
@@ -1266,7 +1636,7 @@ async function handlePushToHubspot() {
   }
   const selectedAddons = getSelectedAddons();
 
-  const taxRate = getTaxRate(state.shipTo.zip);
+  const taxRate = getTaxRate(state.shipTo.city, state.shipTo.zip);
   const productCost = selectedProduct.unit_cost || 0;
   const product = {
     name: selectedProduct.name,
@@ -1868,13 +2238,20 @@ function addonSectionHtml() {
   `;
 }
 
-// Contact picker + editable ship-to address, only shown once a deal is
-// selected (contacts are fetched per-deal, see loadContactsForDeal). Editing
-// the address fields doesn't call HubSpot itself, they're only sent along
-// with the rest of the quote on "Push to HubSpot" (see handlePushToHubspot),
-// which is what actually writes them back onto the selected contact.
+// Contact picker + editable ship-to address. Editing the address fields
+// doesn't call HubSpot itself, they're only sent along with the rest of the
+// quote on "Push to HubSpot" (see handlePushToHubspot), which is what actually
+// writes them back onto the selected contact.
+//
+// Without a selected deal there's no contact to pick from (contacts are fetched
+// per-deal, see loadContactsForDeal) and nothing to push, so this collapses to
+// just the two fields the tax rate lookup actually reads — City and Zip, both
+// optional, see shipToErrors — rather than hiding the whole block. A price
+// lookup still needs a real tax rate, and before this those quotes were stuck
+// on the taxes sheet's zip_unknown fallback with no way to say where the
+// install actually is.
 function shipToSectionHtml() {
-  if (!state.selectedDeal) return "";
+  if (!state.selectedDeal) return taxLocationFieldsHtml();
 
   const selectedContact =
     state.contacts.find((c) => c.hs_contact_id === state.selectedContactId) || null;
@@ -1920,17 +2297,6 @@ function shipToSectionHtml() {
     ? `<p class="muted-text ship-to__hubspot-note">Editing this address will update the contact in HubSpot.</p>`
     : "";
 
-  const field = (key, label, extraAttrs = "", errorHtml = "") => `
-    <div>
-      <div class="ship-to__field">
-        <label class="ship-to__field-label" for="ship-to-${key}">${label}</label>
-        <input type="text" id="ship-to-${key}" data-action="set-ship-to-field" data-field="${key}"
-          class="input ship-to__field-input" value="${escapeHtml(state.shipTo[key])}" ${FIELD_NO_AUTOFILL_ATTRS} ${extraAttrs} />
-      </div>
-      ${errorHtml}
-    </div>
-  `;
-
   const errors = shipToErrors();
   const errorHtml = (key) => (errors[key] ? `<p class="ship-to__error">${errors[key]}</p>` : "");
 
@@ -1940,22 +2306,57 @@ function shipToSectionHtml() {
       ${statusHtml}
       ${contactPickerHtml}
       ${hubspotNoteHtml}
-      ${field("street", "Street *", "", errorHtml("street"))}
-      ${field("city", "City *", "", errorHtml("city"))}
-      ${field("state", "State *", "", errorHtml("state"))}
-      ${field("zip", "Zip *", `maxlength="5" inputmode="numeric"`, errorHtml("zip"))}
+      ${shipToFieldHtml("street", "Street *", "", errorHtml("street"))}
+      ${shipToFieldHtml("city", "City *", "", errorHtml("city"))}
+      ${shipToFieldHtml("state", "State *", "", errorHtml("state"))}
+      ${shipToFieldHtml("zip", "Zip *", `maxlength="5" inputmode="numeric"`, errorHtml("zip"))}
     </div>
   `;
 }
 
-// Comment + expiration date, plus the ship-to block; hidden entirely without
-// a selected deal, same reasoning as shipToSectionHtml() above, there's no
-// quote to attach these details to on a skip-straight-to-price-lookup quote.
-function quoteDetailsHtml() {
-  if (!state.selectedDeal) return "";
+function shipToFieldHtml(key, label, extraAttrs = "", errorHtml = "") {
   return `
-    <div class="quote-details">
-      <div class="quote-details__columns">
+    <div>
+      <div class="ship-to__field">
+        <label class="ship-to__field-label" for="ship-to-${key}">${label}</label>
+        <input type="text" id="ship-to-${key}" data-action="set-ship-to-field" data-field="${key}"
+          class="input ship-to__field-input" value="${escapeHtml(state.shipTo[key])}" ${FIELD_NO_AUTOFILL_ATTRS} ${extraAttrs} />
+      </div>
+      ${errorHtml}
+    </div>
+  `;
+}
+
+// The no-deal variant of the block above: City + Zip only, no asterisks (they
+// aren't required here) and no contact picker or HubSpot note (there's no
+// contact and nothing gets pushed). Same state.shipTo fields and same
+// set-ship-to-field action underneath, so the tax rate lookup doesn't need to
+// care which variant produced them.
+function taxLocationFieldsHtml() {
+  const errors = shipToErrors();
+  return `
+    <div class="ship-to">
+      <h3 class="subsection-title">Install Address</h3>
+      <p class="muted-text">Used for the sales tax rate and price book only, not saved anywhere.</p>
+      ${shipToFieldHtml("city", "City")}
+      ${shipToFieldHtml(
+        "zip",
+        "Zip",
+        `maxlength="5" inputmode="numeric"`,
+        errors.zip ? `<p class="ship-to__error">${errors.zip}</p>` : "",
+      )}
+    </div>
+  `;
+}
+
+// Comment + expiration date, plus the ship-to block. The Quote Details column
+// is hidden without a selected deal — there's no quote to attach a comment or
+// an expiration date to on a skip-straight-to-price-lookup quote — but the
+// ship-to column still renders, in its City/Zip-only form, since the tax rate
+// lookup needs those either way (see shipToSectionHtml/taxLocationFieldsHtml).
+function quoteDetailsHtml() {
+  const quoteFieldsHtml = state.selectedDeal
+    ? `
         <div class="quote-details__col">
           <h3 class="subsection-title">Quote Details</h3>
           <div>
@@ -1969,7 +2370,13 @@ function quoteDetailsHtml() {
               class="input input--block textarea textarea--autogrow" rows="2"
               placeholder="Optional comment shown on the quote">${escapeHtml(state.quoteComment)}</textarea>
           </div>
-        </div>
+        </div>`
+    : "";
+
+  return `
+    <div class="quote-details">
+      <div class="quote-details__columns">
+        ${quoteFieldsHtml}
         <div class="quote-details__col">
           ${shipToSectionHtml()}
         </div>
@@ -2009,7 +2416,13 @@ function summarySectionHtml() {
 
   const subtotal = lineItems.reduce((s, item) => s + Number(item.price || 0), 0);
   const cost = lineItems.reduce((s, item) => s + Number(item.cost || 0), 0);
-  const taxRate = getTaxRate(state.shipTo.zip);
+  // Both of these resolve off the install address city/zip, and both show
+  // which key they matched next to the value they produced (see the
+  // summary__margin-group markup below), so a rep can tell at a glance whether
+  // a quote is priced/taxed off the city, the zip, or neither.
+  const taxMatch = resolveTaxRate(state.shipTo.city, state.shipTo.zip);
+  const pricebookMatch = resolvePricebookMatch(state.shipTo.city, state.shipTo.zip);
+  const taxRate = taxMatch.rate;
   const productCost = selectedProduct ? Number(selectedProduct.unit_cost || 0) : 0;
   const tax =
     productCost * taxRate +
@@ -2116,7 +2529,9 @@ function summarySectionHtml() {
             ? `<div class="summary__margin-group">
                 <span class="${classNames("summary__margin", isLowMarginFromDiscount && "summary__margin--warning")}">Margin: ${marginPct.toFixed(1)}%</span>
                 <span class="summary__margin-divider">|</span>
-                <span class="summary__margin">Tax Rate: ${(taxRate * 100).toFixed(2)}%</span>
+                <span class="summary__margin">Tax Rate: ${escapeHtml(taxMatch.label)} → ${(taxRate * 100).toFixed(2)}%</span>
+                <span class="summary__margin-divider">|</span>
+                <span class="summary__margin">Price Book: ${escapeHtml(pricebookMatch.label)} → ${escapeHtml(pricebookMatch.book)}</span>
               </div>`
             : ""
         }
