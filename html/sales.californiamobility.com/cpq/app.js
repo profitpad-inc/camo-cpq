@@ -86,10 +86,6 @@ const GOOGLE_CLIENT_ID = "1062410601074-lkp9bo5oi2s893asvk0saa4bdsq4pshg.apps.go
 // visible under "Show Margin"); flip this back on if they want it restored.
 const SHOW_COST_COLUMN = false;
 
-// Below this margin %, the "Show Margin" button and the margin % text turn a
-// warning colour, whether or not the margin is currently shown.
-const LOW_MARGIN_THRESHOLD = 30;
-
 // The pricing endpoint backs onto a Google Sheet and can't fetch all its
 // sheets in one request without serializing them server-side, so each sheet
 // is fetched with its own &sheet= call. `products` is split out from
@@ -278,7 +274,10 @@ async function fetchPricingData(idToken) {
 // column with no pricebook rows to switch on), bumping the key retires those
 // entries outright. The pre-pricebook shapes are still tolerated downstream —
 // see BASE_PRICE_KEYS — this just avoids leaning on that on a fresh deploy.
-const PRICING_CACHE_STORAGE_KEY = "cpq-pricing-cache-v2";
+// Bumped again (v2 -> v3) when the pricebooks sheet moved from city/zip rows
+// to lead_source rows and the options sheet's price_1..price_9 columns became
+// named ones (price_kaiser, price_regional_center, ...).
+const PRICING_CACHE_STORAGE_KEY = "cpq-pricing-cache-v4";
 const PRICING_CACHE_SOFT_TTL_MS = 48 * 60 * 60 * 1000;
 const PRICING_CACHE_HARD_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -429,7 +428,7 @@ async function authenticateWithDevBypass(password) {
     state.pricebooks = data.pricebooks;
     state.priceColumns = data.priceColumns;
     // Points every unit_price at the right pricebook column before anything
-    // reads one; re-run whenever the install city/zip changes.
+    // reads one; re-run whenever the contact or the pricebook dropdown changes.
     applyActivePricebook();
     state.authed = true;
     state.devBypass = true;
@@ -662,28 +661,24 @@ function getTaxRate(city, zip) {
 }
 
 // --- pricebooks: which price column a quote reads from ---
-// Products and options no longer carry a single `price`. They each carry a set
-// of pricebook columns — `price_base`, plus `price_1` through `price_9` as the
-// sheet grows them — and both sheets carry the same set. Which column applies
-// is decided per quote by where the install is, via the pricebooks sheet
-// (`?sheet=pricebooks`): one row per location, each naming a `pricebook`
-// column, tagged with a `location_type` of "city", "zip", "stairlift_region"
-// or "fallback".
+// Products and options don't carry a single `price`. They each carry a set of
+// pricebook columns (`price_base`, `price_kaiser`, `price_regional_center`,
+// ...), and both sheets carry the same set. Which column applies is decided
+// per quote by the pricebooks sheet (`?sheet=pricebooks`): one row per
+// pricebook, each naming its column in `pricebook`, with a `location_type` of
+// "fallback", "lead_source" or "manual", a semicolon-separated `searches` list
+// (lead_source rows only), and a `status`.
 //
-// Resolution order deliberately mirrors getTaxRate above: city first, then
-// zip, then the sheet's own "fallback" row, and finally the hardcoded base
-// column if the sheet didn't load at all (it's best-effort, see
-// fetchPricebooks). So a deal in Downey takes price_1; a deal with no
-// recognized city but a zip of 90001 takes price_2; anything else takes
-// whatever the fallback row names.
-//
-// stairlift_region rows are parsed and kept on `byRegion` but never consulted:
-// nothing in this app knows which region an address belongs to (the taxes
-// sheet's "Stairlift Region" column is the only place that mapping exists, and
-// normalizeTaxRates throws it away), and every region row currently points at
-// price_base anyway. Region rows are also deliberately not matched by city
-// name — "Los Angeles" is both a region and a city, and conflating them would
-// let a region row win a lookup the city rows were meant to answer.
+// Resolution order:
+//   1. A pricebook the rep picked from the dropdown beside "Show Margin"
+//      (state.pricebookOverride), always wins until the deal changes.
+//   2. The selected contact's HubSpot `lead_source`, matched against each
+//      active lead_source row's `searches`. Case-insensitive and trimmed, since
+//      both sides are typed by people.
+//   3. The sheet's own active "fallback" row.
+//   4. The hardcoded base column, if the sheet didn't load at all (it's
+//      best-effort, see fetchPricebooks).
+// "manual" rows are never picked automatically, only from the dropdown.
 const BASE_PRICEBOOK = "price_base";
 // The base column has shipped under more than one name (the original `price`,
 // and `base_price` before it settled on `price_base`); treat them as
@@ -691,67 +686,46 @@ const BASE_PRICEBOOK = "price_base";
 // prices instead of reading 0.
 const BASE_PRICE_KEYS = [BASE_PRICEBOOK, "base_price", "price"];
 
+// Turns a column name into what the rep sees: "price_regional_center" ->
+// "Regional Center".
+function pricebookDisplayName(book) {
+  return String(book || "")
+    .replace(/^price_/i, "")
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function emptyPricebooks() {
+  return { rows: [], fallback: BASE_PRICEBOOK };
+}
+
 function normalizePricebooks(rawPricebooks) {
-  const byCity = {};
-  const byZip = {};
-  const byRegion = {};
-  // lowercased city key -> the sheet's own spelling, same purpose as
-  // normalizeTaxRates' cityNames above; see resolvePricebookMatch.
-  const cityNames = {};
+  const rows = [];
   let fallback = BASE_PRICEBOOK;
 
   for (const row of extractPricebookSheet(rawPricebooks || [])) {
     const book = String(row.pricebook ?? "").trim();
-    const location = String(row.location ?? "").trim();
     if (!book) continue;
-    switch (String(row.location_type ?? "").trim().toLowerCase()) {
-      case "fallback":
-        fallback = book;
-        break;
-      case "city":
-        // Lowercased on both sides (see resolvePricebookMatch), same reasoning
-        // as normalizeTaxRates' byCity: the city is free text off a contact
-        // record or the rep's own typing, so its casing can't be relied on.
-        if (location) {
-          byCity[location.toLowerCase()] = book;
-          cityNames[location.toLowerCase()] = location;
-        }
-        break;
-      case "zip":
-        // Zips can come back from the sheet as bare numbers, so re-pad to 5
-        // digits before keying on them, same as normalizeTaxRates' byZip.
-        if (location) byZip[location.padStart(5, "0")] = book;
-        break;
-      case "stairlift_region":
-        if (location) byRegion[location.toLowerCase()] = book;
-        break;
-    }
+    const locationType = String(row.location_type ?? "").trim().toLowerCase();
+    const active = String(row.status ?? "").trim().toLowerCase() === "active";
+    const searches = String(row.searches ?? "")
+      .split(";")
+      .map((term) => term.trim().toLowerCase())
+      .filter(Boolean);
+    rows.push({ book, locationType, active, searches });
+    if (locationType === "fallback" && active) fallback = book;
   }
 
-  return { byCity, byZip, byRegion, cityNames, fallback };
-}
-
-// The city/zip/fallback lookup on its own, before checking whether the column
-// it names actually exists in the loaded catalog; resolvePricebookMatch below
-// is what callers want.
-function matchPricebookLocation(city, zip) {
-  const { byCity, byZip, cityNames, fallback } = state.pricebooks;
-  const cityKey = String(city || "").trim().toLowerCase();
-  if (cityKey && Object.prototype.hasOwnProperty.call(byCity, cityKey)) {
-    return { book: byCity[cityKey], source: "city", label: cityNames[cityKey] || cityKey };
-  }
-  const zipKey = String(zip || "").trim();
-  if (zipKey && Object.prototype.hasOwnProperty.call(byZip, zipKey)) {
-    return { book: byZip[zipKey], source: "zip", label: zipKey };
-  }
-  return { book: fallback || BASE_PRICEBOOK, source: "fallback", label: LOCATION_FALLBACK_LABEL };
+  return { rows, fallback };
 }
 
 // True when the products and options sheets actually carry the named column, so
-// a pricebook the pricebooks sheet points at before those columns exist (or
-// after one is removed) isn't reported as being in use when it can't be.
+// a pricebook the pricebooks sheet lists before those columns exist (or after
+// one is removed) isn't offered or reported as being in use when it can't be.
 // Checked against both sheets, and a column has to be on both to count: pricing
-// products off price_2 while every add-on silently fell back to price_base
+// products off one column while every add-on silently fell back to price_base
 // would be a quote nobody could explain. A sheet that returned no rows at all
 // contributes no columns and is skipped rather than failing every check.
 function isPricebookAvailable(book) {
@@ -763,26 +737,53 @@ function isPricebookAvailable(book) {
   return columnSets.every((columns) => columns.includes(book));
 }
 
-// Returns `{ book, source, label }`, same shape and same reason as
-// resolveTaxRate above: the summary panel shows which key picked the pricebook,
-// not just which pricebook was picked. resolvePricebook below is the
-// book-only wrapper.
-//
-// A location whose pricebook column isn't in the catalog falls through to the
-// next step of the same chain (the sheet's fallback row, then price_base) and
-// reports itself that way, rather than naming a column nothing is actually
-// priced off — the label has to match what the numbers beside it did.
-function resolvePricebookMatch(city, zip) {
-  const match = matchPricebookLocation(city, zip);
-  if (isPricebookAvailable(match.book)) return match;
+// The pricebooks offered in the dropdown: every active row whose column the
+// catalog actually carries, in sheet order. Falls back to just the base column
+// when the sheet didn't load, so the dropdown always has the active book in it.
+function selectablePricebooks() {
+  const books = uniqueInOrder(
+    state.pricebooks.rows
+      .filter((row) => row.active && isPricebookAvailable(row.book))
+      .map((row) => row.book),
+  );
+  if (!books.includes(state.activePricebook)) books.unshift(state.activePricebook);
+  return books;
+}
+
+function selectedContactLeadSource() {
+  const contact = state.contacts.find((c) => c.hs_contact_id === state.selectedContactId);
+  return String(contact?.lead_source ?? "").trim();
+}
+
+// Returns `{ book, source, label }`: the summary panel shows *why* a pricebook
+// was picked (the matched lead source, "Manual", or "Default"), not just which
+// one. resolvePricebook below is the book-only wrapper.
+function resolvePricebookMatch() {
+  const override = state.pricebookOverride;
+  if (override && isPricebookAvailable(override)) {
+    return { book: override, source: "manual", label: "Manual" };
+  }
+
+  const leadSource = selectedContactLeadSource();
+  const leadKey = leadSource.toLowerCase();
+  if (leadKey) {
+    const row = state.pricebooks.rows.find(
+      (r) =>
+        r.active &&
+        r.locationType === "lead_source" &&
+        r.searches.includes(leadKey) &&
+        isPricebookAvailable(r.book),
+    );
+    if (row) return { book: row.book, source: "lead_source", label: leadSource };
+  }
 
   const sheetFallback = state.pricebooks.fallback || BASE_PRICEBOOK;
   const book = isPricebookAvailable(sheetFallback) ? sheetFallback : BASE_PRICEBOOK;
   return { book, source: "fallback", label: LOCATION_FALLBACK_LABEL };
 }
 
-function resolvePricebook(city, zip) {
-  return resolvePricebookMatch(city, zip).book;
+function resolvePricebook() {
+  return resolvePricebookMatch().book;
 }
 
 // Reading the first row's keys is the sheet's own contract for this: any key
@@ -820,6 +821,20 @@ function extractPrices(row, priceColumns) {
   return prices;
 }
 
+// Reads a row's max_discount as dollars. Tolerates the column header varying
+// in case/spacing ("Max Discount", "max discount") and the cell coming through
+// currency-formatted ("$1,200.00"), both of which a plain Number() turns into
+// 0, silently dropping that item out of the summed max discount. Blank or
+// unparseable still counts as 0, see maxDiscountCodeHtml().
+function readMaxDiscount(row) {
+  const key = Object.keys(row || {}).find((k) => k.toLowerCase().replace(/[^a-z]/g, "") === "maxdiscount");
+  if (!key) return 0;
+  const value = row[key];
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const parsed = Number(String(value ?? "").replace(/[$,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 // Falls back to the base column whenever the resolved pricebook names a column
 // this row doesn't actually have, e.g. the sheet points a location at price_4
 // before that column exists on the products/options sheets.
@@ -829,7 +844,8 @@ function priceFromBook(item, book) {
 }
 
 // Repoints every product's and add-on's unit_price at whichever pricebook
-// column the current install-address city/zip resolves to. Everything
+// column resolvePricebookMatch() currently picks (the rep's dropdown choice,
+// else the contact's lead source, else the fallback row). Everything
 // downstream (cards, summary, margin, the HubSpot push) keeps reading a plain
 // unit_price, so this is the only place that knows there's more than one price
 // column at all.
@@ -838,7 +854,7 @@ function priceFromBook(item, book) {
 // cue that the product/add-on cards need re-rendering too, not just the
 // summary panel.
 function applyActivePricebook() {
-  const book = resolvePricebook(state.shipTo.city, state.shipTo.zip);
+  const book = resolvePricebook();
   const changed = book !== state.activePricebook;
   state.activePricebook = book;
   for (const product of state.products) product.unit_price = priceFromBook(product, book);
@@ -863,12 +879,14 @@ function normalizePricingData(raw) {
       customerDescription: p.customer_description || "",
       category: p.category,
       // every pricebook column this row carries, kept so applyActivePricebook()
-      // can switch between them as the install city/zip changes
+      // can switch between them as the contact or the dropdown changes
       prices,
       // starts on the base column; applyActivePricebook() repoints it at
-      // whichever column the install address resolves to
+      // whichever column resolvePricebookMatch() picks
       unit_price: prices[BASE_PRICEBOOK],
       unit_cost: Number(p.cost) || 0,
+      // max discount ($) the rep can give on this product, see maxDiscountCodeHtml()
+      maxDiscount: readMaxDiscount(p),
       // the HubSpot product dropdown value for this product, kept for the HubSpot push
       hsProduct: p.hs_product || "",
     };
@@ -886,6 +904,8 @@ function normalizePricingData(raw) {
       prices,
       unit_price: prices[BASE_PRICEBOOK],
       unit_cost: Number(o.cost) || 0,
+      // max discount ($) per unit, multiplied by quantity in the summary
+      maxDiscount: readMaxDiscount(o),
       // compatible_base_product_skus lists product base_sku values, not full product skus
       parentBaseSkus: splitSkuList(o.compatible_base_product_skus),
       incompatible_skus: splitSkuList(o.incompatible_option_skus),
@@ -944,15 +964,19 @@ const state = {
   // city -> and zip -> tax rate lookups (see sheet=taxes), plus the sheet's
   // zip_unknown fallback rate; see normalizeTaxRates/getTaxRate.
   taxRates: { byZip: {}, byCity: {}, cityNames: {}, unknownRate: 0 },
-  // city/zip/region -> pricebook column lookups (see sheet=pricebooks), plus
-  // the sheet's own fallback column; see normalizePricebooks/resolvePricebook.
-  pricebooks: { byCity: {}, byZip: {}, byRegion: {}, cityNames: {}, fallback: BASE_PRICEBOOK },
+  // the pricebooks sheet's rows plus its active fallback column; see
+  // normalizePricebooks/resolvePricebookMatch.
+  pricebooks: emptyPricebooks(),
   // the pricebook columns the products/options sheets actually carry, detected
   // from each sheet's first row; see detectPriceColumns/isPricebookAvailable
   priceColumns: { products: [], options: [] },
-  // the pricebook column every unit_price currently reflects, re-resolved from
-  // the install address by applyActivePricebook()
+  // the pricebook column every unit_price currently reflects, re-resolved by
+  // applyActivePricebook()
   activePricebook: BASE_PRICEBOOK,
+  // a pricebook column the rep picked from the dropdown beside "Show Margin";
+  // null means "pick automatically" (lead source, then fallback). Cleared
+  // whenever a different deal (or no deal) is chosen.
+  pricebookOverride: null,
 
   // "deal-select" (choose an existing deal or skip to a price lookup) or
   // "cpq" (the main product/add-on/summary layout)
@@ -1139,7 +1163,7 @@ async function authenticateWithGoogle(idToken, isStoredSessionReplay = false) {
     state.pricebooks = data.pricebooks;
     state.priceColumns = data.priceColumns;
     // Points every unit_price at the right pricebook column before anything
-    // reads one; re-run whenever the install city/zip changes.
+    // reads one; re-run whenever the contact or the pricebook dropdown changes.
     applyActivePricebook();
     state.authed = true;
     const claims = decodeIdTokenPayload(idToken);
@@ -1195,9 +1219,10 @@ function signOut() {
   state.addonCategories = [];
   state.packages = [];
   state.taxRates = { byZip: {}, byCity: {}, cityNames: {}, unknownRate: 0 };
-  state.pricebooks = { byCity: {}, byZip: {}, byRegion: {}, cityNames: {}, fallback: BASE_PRICEBOOK };
+  state.pricebooks = emptyPricebooks();
   state.priceColumns = { products: [], options: [] };
   state.activePricebook = BASE_PRICEBOOK;
+  state.pricebookOverride = null;
   state.step = "deal-select";
   state.selectedDeal = null;
   state.dealIdNotFound = null;
@@ -1263,9 +1288,10 @@ function applyContactToShipTo(contact) {
     state: contact?.address_state || "",
     zip: contact?.address_zip || "",
   };
-  // This address is one of the two things that decides which pricebook column
-  // prices come from (the other is the rep typing into those same fields, see
-  // setShipToField); callers all re-render after this, so no render here.
+  // The selected contact's lead_source decides which pricebook column prices
+  // come from (unless the rep picked one from the dropdown), and every caller
+  // sets selectedContactId before calling this; callers all re-render after
+  // this, so no render here.
   applyActivePricebook();
 }
 
@@ -1302,6 +1328,7 @@ function selectContact(contactId) {
 
 function chooseDeal(deal) {
   state.selectedDeal = deal;
+  state.pricebookOverride = null;
   const pkg = findPackageForDeal(deal);
   applyPackageSelection(pkg);
   state.dealMatchFailed = !pkg;
@@ -1313,6 +1340,7 @@ function chooseDeal(deal) {
 
 function skipToPriceLookup() {
   state.selectedDeal = null;
+  state.pricebookOverride = null;
   state.dealMatchFailed = false;
   state.step = "cpq";
   state.contacts = [];
@@ -1519,7 +1547,26 @@ function setAddonSearchQuery(value) {
   addonSearchDebounceHandle = setTimeout(renderPicker, SEARCH_DEBOUNCE_MS);
 }
 
+// Quote subtotal (product + add-ons, before tax and discount), the base the
+// discount is measured against.
+function getQuoteSubtotal() {
+  const product = getSelectedProduct();
+  return roundToCent(
+    (product ? Number(product.unit_price || 0) : 0) +
+      getSelectedAddons().reduce((s, a) => s + Number(a.unit_price || 0) * getAddonQuantity(a), 0),
+  );
+}
+
+// Switching between $ and % converts the value already in the box so the
+// discount itself stays the same (e.g. $100 on a $1000 quote becomes 10%).
 function setDiscountType(type) {
+  if (type === state.discountType) return;
+  const subtotal = getQuoteSubtotal();
+  if (state.discountValue !== "" && subtotal > 0) {
+    const raw = Number(state.discountValue);
+    const converted = type === "%" ? (raw / subtotal) * 100 : (raw / 100) * subtotal;
+    state.discountValue = String(type === "%" ? roundToCent(converted) : Math.round(converted));
+  }
   state.discountType = type;
   state.pricingDirty = true;
   render();
@@ -1527,11 +1574,30 @@ function setDiscountType(type) {
 
 function setDiscountValue(value) {
   // Keep digits and a single decimal point; strip anything else the user
-  // types or pastes (letters, extra dots, minus signs, etc).
-  const sanitized = value
+  // types or pastes (letters, extra dots, minus signs, etc). $ discounts are
+  // whole dollars, so the decimal point and anything after it is dropped;
+  // % discounts allow at most 2 decimal places.
+  let sanitized = value
     .replace(/[^\d.]/g, "")
     .replace(/(\..*)\./g, "$1");
+  sanitized =
+    state.discountType === "$"
+      ? sanitized.replace(/\..*$/, "")
+      : sanitized.replace(/(\.\d{2})\d+/, "$1");
   state.discountValue = sanitized;
+  state.pricingDirty = true;
+  renderSummary();
+}
+
+// Run on blur rather than per keystroke so the rep can type freely: a $
+// discount over the quote subtotal snaps back to the subtotal (rounded down
+// to whole dollars, so it never exceeds the quote), and a %
+// discount over 100 snaps back to 100.
+function clampDiscountValue() {
+  const raw = Number(state.discountValue || 0);
+  const max = state.discountType === "%" ? 100 : Math.floor(getQuoteSubtotal());
+  if (raw <= max) return;
+  state.discountValue = String(max);
   state.pricingDirty = true;
   renderSummary();
 }
@@ -1568,16 +1634,17 @@ function setShipToField(field, value) {
   // reconciling renderSummary() on blur in the focusout listener below.
   state.shipTo[field] = field === "zip" ? value.replace(/[^\d]/g, "").slice(0, 5) : value;
   state.pricingDirty = true;
-  // City and zip drive which pricebook column every price is read from, not
-  // just the tax rate, and a column switch changes the product/add-on card
-  // prices too, not only the summary panel — so that one case does need a full
-  // re-render. It's gated on the column actually changing, so the
-  // no-render-per-keystroke behavior above still holds for every keystroke
-  // that doesn't flip it (typing "Downe…" renders nothing, the "y" that
-  // completes "Downey" renders once).
-  if ((field === "city" || field === "zip") && applyActivePricebook()) {
-    render();
-  }
+}
+
+// The rep's pick from the Pricebook dropdown beside "Show Margin". It sticks
+// for the rest of this deal's quote, even across contact switches, since the
+// rep chose it on purpose. A column switch changes the product/add-on card
+// prices too, not just the summary panel, so this needs a full render().
+function setPricebookOverride(book) {
+  state.pricebookOverride = book || null;
+  state.pricingDirty = true;
+  applyActivePricebook();
+  render();
 }
 
 function isZipValid() {
@@ -2337,7 +2404,7 @@ function taxLocationFieldsHtml() {
   return `
     <div class="ship-to">
       <h3 class="subsection-title">Install Address</h3>
-      <p class="muted-text">Used for the sales tax rate and price book only, not saved anywhere.</p>
+      <p class="muted-text">Used for the sales tax rate only, not saved anywhere.</p>
       ${shipToFieldHtml("city", "City")}
       ${shipToFieldHtml(
         "zip",
@@ -2349,16 +2416,17 @@ function taxLocationFieldsHtml() {
   `;
 }
 
-// Comment + expiration date, plus the ship-to block. The Quote Details column
-// is hidden without a selected deal — there's no quote to attach a comment or
-// an expiration date to on a skip-straight-to-price-lookup quote — but the
-// ship-to column still renders, in its City/Zip-only form, since the tax rate
-// lookup needs those either way (see shipToSectionHtml/taxLocationFieldsHtml).
+// Comment + expiration date + (with "Show Margin" on) the Pricebook dropdown,
+// plus the ship-to block. Expiration date and comment only render with a
+// selected deal, since there's no quote to attach them to on a
+// skip-straight-to-price-lookup quote; the Pricebook dropdown renders either
+// way, so the Quote Details column shows whenever there's a deal or margin is
+// on. The ship-to column always renders, in its City/Zip-only form without a
+// deal, since the tax rate lookup needs those either way (see
+// shipToSectionHtml/taxLocationFieldsHtml).
 function quoteDetailsHtml() {
-  const quoteFieldsHtml = state.selectedDeal
+  const dealFieldsHtml = state.selectedDeal
     ? `
-        <div class="quote-details__col">
-          <h3 class="subsection-title">Quote Details</h3>
           <div>
             <label class="field-label" for="quote-expiration-date">Expiration date</label>
             <input type="text" id="quote-expiration-date" readonly ${FIELD_NO_AUTOFILL_ATTRS}
@@ -2369,9 +2437,18 @@ function quoteDetailsHtml() {
             <textarea id="quote-comment" data-action="set-quote-comment" ${FIELD_NO_AUTOFILL_ATTRS}
               class="input input--block textarea textarea--autogrow" rows="2"
               placeholder="Optional comment shown on the quote">${escapeHtml(state.quoteComment)}</textarea>
-          </div>
-        </div>`
+          </div>`
     : "";
+  const pricebookHtml = state.marginHeld ? pricebookSelectHtml() : "";
+  const quoteFieldsHtml =
+    dealFieldsHtml || pricebookHtml
+      ? `
+        <div class="quote-details__col">
+          <h3 class="subsection-title">Quote Details</h3>
+          ${dealFieldsHtml}
+          ${pricebookHtml}
+        </div>`
+      : "";
 
   return `
     <div class="quote-details">
@@ -2416,12 +2493,9 @@ function summarySectionHtml() {
 
   const subtotal = lineItems.reduce((s, item) => s + Number(item.price || 0), 0);
   const cost = lineItems.reduce((s, item) => s + Number(item.cost || 0), 0);
-  // Both of these resolve off the install address city/zip, and both show
-  // which key they matched next to the value they produced (see the
-  // summary__margin-group markup below), so a rep can tell at a glance whether
-  // a quote is priced/taxed off the city, the zip, or neither.
+  // Shows which city/zip the tax rate matched next to the rate itself (see the
+  // summary__margin-group markup below).
   const taxMatch = resolveTaxRate(state.shipTo.city, state.shipTo.zip);
-  const pricebookMatch = resolvePricebookMatch(state.shipTo.city, state.shipTo.zip);
   const taxRate = taxMatch.rate;
   const productCost = selectedProduct ? Number(selectedProduct.unit_cost || 0) : 0;
   const tax =
@@ -2435,8 +2509,9 @@ function summarySectionHtml() {
   const totalBeforeTax = subtotal - discountAmount;
   const total = totalBeforeTax + tax;
   const marginPct = totalBeforeTax !== 0 ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100 : 0;
-  const isLowMargin = marginPct < LOW_MARGIN_THRESHOLD;
-  const isLowMarginFromDiscount = isLowMargin && discountAmount > 0;
+  const maxDiscount =
+    (selectedProduct ? selectedProduct.maxDiscount || 0 : 0) +
+    selectedAddons.reduce((s, a) => s + (a.maxDiscount || 0) * getAddonQuantity(a), 0);
 
   const marginHeld = state.marginHeld;
   const showCostColumn = marginHeld && SHOW_COST_COLUMN;
@@ -2527,11 +2602,9 @@ function summarySectionHtml() {
         ${
           marginHeld
             ? `<div class="summary__margin-group">
-                <span class="${classNames("summary__margin", isLowMarginFromDiscount && "summary__margin--warning")}">Margin: ${marginPct.toFixed(1)}%</span>
+                <span class="summary__margin">Margin: ${marginPct.toFixed(1)}%</span>
                 <span class="summary__margin-divider">|</span>
                 <span class="summary__margin">Tax Rate: ${escapeHtml(taxMatch.label)} → ${(taxRate * 100).toFixed(2)}%</span>
-                <span class="summary__margin-divider">|</span>
-                <span class="summary__margin">Price Book: ${escapeHtml(pricebookMatch.label)} → ${escapeHtml(pricebookMatch.book)}</span>
               </div>`
             : ""
         }
@@ -2561,7 +2634,7 @@ function summarySectionHtml() {
                 state.discountType === "%" ? "segmented__btn--active" : "",
               )}">%</button>
             </div>
-            <input type="text" inputmode="decimal" id="discount-value-input"
+            <input type="text" inputmode="${state.discountType === "$" ? "numeric" : "decimal"}" id="discount-value-input"
               data-action="set-discount-value" value="${escapeHtml(state.discountValue)}"
               class="input input--discount" ${FIELD_NO_AUTOFILL_ATTRS}
               placeholder="0" />
@@ -2589,6 +2662,7 @@ function summarySectionHtml() {
           <span class="totals__amount">${currency.format(total)}</span>
         </div>
       </div>
+      ${maxDiscountCodeHtml(discountAmount, maxDiscount)}
 
       ${quoteDetailsHtml()}
 
@@ -2597,7 +2671,7 @@ function summarySectionHtml() {
           <div class="summary__actions-row">
             ${pushButtonHtml}
           </div>
-          <button type="button" data-action="toggle-margin" class="${classNames("btn", "btn--muted", "btn--margin-toggle", isLowMarginFromDiscount && "btn--margin-toggle--warning")}">
+          <button type="button" data-action="toggle-margin" class="btn btn--muted btn--margin-toggle">
             ${marginHeld ? "Hide Margin" : "Show Margin"}
           </button>
         </div>
@@ -2607,6 +2681,38 @@ function summarySectionHtml() {
             : ""
         }
       </div>
+    </div>
+  `;
+}
+
+// When the discount goes over the summed max_discount of the selected product
+// and add-ons (each add-on's times its quantity), show "MD<sum>" under the
+// totals. Deliberately cryptic: it should read as a stray code to a customer
+// looking over the rep's shoulder, but tells the rep they're past the limit.
+function maxDiscountCodeHtml(discountAmount, maxDiscount) {
+  if (discountAmount <= maxDiscount) return "";
+  return `<div class="totals__code">MD${Math.round(maxDiscount)}</div>`;
+}
+
+// The Pricebook dropdown in the Quote Details column, below Comment, shown only
+// while "Show Margin" is on: every active pricebook the catalog carries, with
+// whichever one is currently pricing the quote selected (whether the rep
+// picked it or it was resolved automatically).
+function pricebookSelectHtml() {
+  const options = selectablePricebooks()
+    .map(
+      (book) =>
+        `<option value="${escapeHtml(book)}" ${book === state.activePricebook ? "selected" : ""}>${escapeHtml(
+          pricebookDisplayName(book),
+        )}</option>`,
+    )
+    .join("");
+  return `
+    <div>
+      <label class="field-label" for="pricebook-select">Pricebook</label>
+      <select id="pricebook-select" data-action="set-pricebook" class="input input--block" ${FIELD_NO_AUTOFILL_ATTRS}>
+        ${options}
+      </select>
     </div>
   `;
 }
@@ -3228,6 +3334,9 @@ document.addEventListener("input", (e) => {
   if (e.target.dataset.action === "select-ship-to-contact") {
     selectContact(e.target.value);
   }
+  if (e.target.dataset.action === "set-pricebook") {
+    setPricebookOverride(e.target.value);
+  }
   if (e.target.dataset.action === "set-quote-email-draft") {
     setQuoteEmailDraft(e.target.value);
   }
@@ -3278,6 +3387,16 @@ document.addEventListener("focusout", (e) => {
   if (e.target.dataset.action === "set-quote-comment" || e.target.dataset.action === "set-ship-to-field") {
     renderSummary();
   }
+});
+
+// Each keystroke's renderSummary() recreates the discount input, which fires
+// a focusout on the old node even though the rep is still typing (same issue
+// as the quote email draft above), so only clamp once focus has really left.
+document.addEventListener("focusout", (e) => {
+  if (e.target.dataset.action !== "set-discount-value") return;
+  setTimeout(() => {
+    if (document.activeElement?.id !== "discount-value-input") clampDiscountValue();
+  }, 0);
 });
 
 window.addEventListener("keydown", (e) => {
