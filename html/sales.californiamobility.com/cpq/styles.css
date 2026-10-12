@@ -977,6 +977,10 @@ select.input {
   color: var(--color-warning);
 }
 
+.totals__code--over {
+  color: var(--color-red-600, #dc2626);
+}
+
 @media (min-width: 640px) {
   .totals__amount,
   .totals__spacer {

@@ -1713,6 +1713,7 @@ async function handlePushToHubspot() {
     price: selectedProduct.unit_price,
     cost: productCost,
     tax_amount: roundToCent(productCost * taxRate),
+    max_discount: selectedProduct.maxDiscount || 0,
   };
 
   const options = selectedAddons.map((a) => {
@@ -1731,6 +1732,8 @@ async function handlePushToHubspot() {
       price: unitPrice,
       cost,
       tax_amount: roundToCent(totalPrice * taxRate),
+      // per-unit max discount * quantity, same as cost/tax_amount
+      max_discount: (a.maxDiscount || 0) * quantity,
     };
   });
 
@@ -1747,6 +1750,8 @@ async function handlePushToHubspot() {
   const totalBeforeTax = subtotal - discountAmount;
   const total = totalBeforeTax + taxAmount;
   const margin = totalBeforeTax !== 0 ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100 : 0;
+  // same sum the summary's MD<sum> code shows
+  const maxDiscount = product.max_discount + options.reduce((s, o) => s + o.max_discount, 0);
 
   state.quoteLoading = true;
   state.quoteLink = null;
@@ -1772,6 +1777,9 @@ async function handlePushToHubspot() {
         margin,
         discount_amount: discountAmount,
         discount_percentage: discountPercentage,
+        max_discount: maxDiscount,
+        // the pricebook column every price in this body was read from, e.g. "price_kaiser"
+        pricebook: state.activePricebook,
         tax_amount: taxAmount,
         tax_percentage: Number((taxRate * 100).toFixed(2)),
         tax_location: state.shipTo.zip.trim(),
@@ -2685,13 +2693,19 @@ function summarySectionHtml() {
   `;
 }
 
-// When the discount goes over the summed max_discount of the selected product
-// and add-ons (each add-on's times its quantity), show "MD<sum>" under the
-// totals. Deliberately cryptic: it should read as a stray code to a customer
-// looking over the rep's shoulder, but tells the rep they're past the limit.
+// Always shown under the totals, from the summed max_discount of the selected
+// product and add-ons (each add-on's times its quantity). With no discount
+// applied it's "MD<max>"; once one is, it's "RM<max - discount>", the discount
+// the rep has left, turning red when that goes negative. Deliberately cryptic:
+// it should read as a stray code to a customer looking over the rep's
+// shoulder, but tells the rep how much room they have.
 function maxDiscountCodeHtml(discountAmount, maxDiscount) {
-  if (discountAmount <= maxDiscount) return "";
-  return `<div class="totals__code">MD${Math.round(maxDiscount)}</div>`;
+  if (discountAmount <= 0) {
+    return `<div class="totals__code">MD${Math.round(maxDiscount)}</div>`;
+  }
+  const remaining = Math.round(maxDiscount - discountAmount);
+  const overClass = remaining < 0 ? " totals__code--over" : "";
+  return `<div class="totals__code${overClass}">RM${remaining}</div>`;
 }
 
 // The Pricebook dropdown in the Quote Details column, below Comment, shown only
