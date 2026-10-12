@@ -2695,7 +2695,7 @@ function summarySectionHtml() {
 
 // Always shown under the totals, from the summed max_discount of the selected
 // product and add-ons (each add-on's times its quantity). With no discount
-// applied it's "MD<max>"; once one is, it's "RM<max - discount>", the discount
+// applied it's "MD<max>"; once one is, it's "RD<max - discount>", the discount
 // the rep has left, turning red when that goes negative. Deliberately cryptic:
 // it should read as a stray code to a customer looking over the rep's
 // shoulder, but tells the rep how much room they have.
@@ -2705,7 +2705,7 @@ function maxDiscountCodeHtml(discountAmount, maxDiscount) {
   }
   const remaining = Math.round(maxDiscount - discountAmount);
   const overClass = remaining < 0 ? " totals__code--over" : "";
-  return `<div class="totals__code${overClass}">RM${remaining}</div>`;
+  return `<div class="totals__code${overClass}">RD${remaining}</div>`;
 }
 
 // The Pricebook dropdown in the Quote Details column, below Comment, shown only
