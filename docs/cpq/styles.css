@@ -1,6 +1,12 @@
 /* Camo CPQ — hand-written CSS (no build step, no framework). */
 /* Brand tokens + reset live in global.css (static.californiamobility.com), linked from index.html. */
 
+/* This app's typeface. Overrides global.css's --font-sans here rather than
+   there, since global.css is shared with other California Mobility webtools. */
+:root {
+  --font-sans: "Lexend Deca", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
 /* --- page shell --- */
 
 .page {
@@ -23,6 +29,10 @@
 
 .app-shell {
   width: 100%;
+  /* .page centers this as a flex item, whose default min-width is its content's
+     min width; anything inside that can't shrink would then widen the whole
+     shell past the viewport and, centered, push it off the left edge. */
+  min-width: 0;
   max-width: 80rem;
   min-height: 100vh;
   display: flex;
@@ -216,7 +226,8 @@
   }
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -331,6 +342,8 @@
   border: 1px solid var(--color-gray-200);
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
+  /* selects don't inherit the page font on their own (inputs do, via global.css) */
+  font-family: inherit;
   /* 16px, not the desktop 0.875rem: below 16px, iOS Safari zooms the
      viewport in on focus and doesn't reliably zoom back out on blur once
      this app's re-render replaces the focused node. Restored to 0.875rem
@@ -360,22 +373,12 @@ select.input {
   padding-right: 2.5rem;
 }
 
-.input--discount {
-  width: 4rem;
-  text-align: right;
-  padding: 0.375rem 0.5rem;
-}
-
 @media (min-width: 640px) {
   .input,
   .qty-stepper__input,
   .ship-to__field-input,
   .chip-input__field {
     font-size: 0.875rem;
-  }
-
-  .input--discount {
-    width: 6rem;
   }
 }
 
@@ -665,6 +668,14 @@ select.input {
   box-shadow: var(--shadow-md);
 }
 
+.accordion-toggle--disabled,
+.accordion-toggle--disabled:hover {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--color-gray-50);
+  box-shadow: none;
+}
+
 .accordion-toggle:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-brand);
@@ -865,9 +876,23 @@ select.input {
   gap: 1rem;
 }
 
+/* Add-ons read as sub-items of the product above them: indented behind a
+   brand-colored rule, with smaller, lighter text and prices. */
 .line-item--addon {
-  padding-left: 1rem;
-  border-left: 2px solid var(--color-gray-100);
+  margin-left: 0.5rem;
+  padding-left: 0.875rem;
+  border-left: 3px solid var(--color-brand);
+  font-size: 0.875rem;
+}
+
+.line-item--addon .line-item__name {
+  font-weight: 400;
+  color: var(--color-gray-700);
+}
+
+.line-item--addon .line-item__price {
+  font-weight: 500;
+  color: var(--color-gray-700);
 }
 
 .line-item__body {
@@ -876,7 +901,7 @@ select.input {
 }
 
 .line-item__name {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--color-gray-900);
 }
 
@@ -919,56 +944,146 @@ select.input {
   }
 }
 
+/* The stairlift tabs sit on the left; the totals table on the right (below
+   the tabs on narrow screens, where they wrap). */
 .totals {
   border-top: 1px solid var(--color-gray-100);
   padding-top: 1rem;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem;
 }
 
-.totals__row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+.totals > .line-tabs {
+  flex: 1 1 12rem;
+  margin-bottom: 0;
+}
+
+/* A fixed set of rows (the discount amount sits on the Discount row itself,
+   $0.00 when none is applied), so nothing shifts when a discount is typed in. */
+.totals-table {
+  /* fixed width, just enough for the labels and the discount box, so it
+     doesn't stretch across the panel or resize as values change */
+  flex: 0 1 20rem;
+  max-width: 100%;
+  margin-left: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 0.75rem;
+  overflow: hidden;
   font-size: 0.875rem;
 }
 
-.totals__row--discount {
-  padding: 0.25rem 0;
+.totals-table th,
+.totals-table td {
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--color-gray-200);
+  vertical-align: middle;
 }
 
-.totals__row--applied {
-  color: var(--color-green-600);
+.totals-table tr:last-child > *,
+.totals-table tr:nth-last-child(2) > * {
+  border-bottom: none;
 }
 
-.totals__row--total {
-  font-weight: 600;
-  font-size: 1rem;
-  border-top: 1px solid var(--color-gray-100);
-  padding-top: 0.75rem;
-  margin-top: 0.25rem;
-}
-
-.totals__label {
-  flex: 1;
+.totals-table th {
+  text-align: left;
+  font-weight: 500;
   color: var(--color-gray-600);
 }
 
-.totals__amount {
-  width: 5rem;
+.totals-table td {
+  /* fixed width so the column doesn't resize as amounts change */
+  width: 7.5rem;
   text-align: right;
+  white-space: nowrap;
+  color: var(--color-gray-900);
 }
 
-.totals__amount--strong {
+.totals-table td.totals-table__cost {
+  width: 6rem;
+  color: var(--color-gray-500);
+}
+
+/* Discount row: the $/% toggle sits inside the left end of the amount box in
+   the value column. In % mode the resulting dollar amount shows in brackets
+   after the "Discount" label. */
+/* on its own line under "Discount" so the label column stays narrow */
+.totals-table__discount-amount {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.2;
   font-weight: 500;
+  color: var(--color-green-600);
 }
 
-.totals__spacer {
-  width: 5rem;
+.totals-table__discount-field {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  width: 8rem;
+  padding: 0.125rem;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 0.5rem;
+  background: var(--color-white);
+}
+
+.totals-table__discount-field:focus-within {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+
+.segmented--compact {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.6875rem;
+}
+
+.segmented--compact .segmented__btn {
+  padding: 0.0625rem 0.4375rem;
+}
+
+.totals-table__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0.375rem;
+  border: none;
+  outline: none;
+  background: transparent;
+  text-align: right;
+  /* 16px on phones so iOS Safari doesn't zoom in on focus, same as .input */
+  font-size: 1rem;
+}
+
+.totals-table__input--applied {
+  color: var(--color-green-600);
+}
+
+@media (min-width: 640px) {
+  .totals-table__input {
+    font-size: 0.875rem;
+  }
+}
+
+.totals-table__total th,
+.totals-table__total td {
+  border-top: 2px solid var(--color-gray-900);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-gray-900);
 }
 
 .totals__code {
+  /* shrink-wrapped and pushed right (rather than a full-width right-aligned
+     block) so the flash highlight below hugs just the code */
+  width: fit-content;
+  margin-left: auto;
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
   margin-top: 0.375rem;
   text-align: right;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -981,17 +1096,16 @@ select.input {
   color: var(--color-red-600, #dc2626);
 }
 
-@media (min-width: 640px) {
-  .totals__amount,
-  .totals__spacer {
-    width: 7rem;
-  }
+.totals__code--flash {
+  animation: totals-code-flash 0.4s ease-in-out 3;
+  transform-origin: right center;
 }
 
-.discount-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+@keyframes totals-code-flash {
+  50% {
+    background: rgb(220 38 38 / 0.15);
+    transform: scale(1.25);
+  }
 }
 
 .segmented {
@@ -1083,53 +1197,90 @@ select.input {
   cursor: not-allowed;
 }
 
+/* One card per stairlift when the quote has 2+; the one being edited gets a
+   brand-colored border and label. */
 .line-group {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem 0.75rem;
-  border: 1px solid transparent;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem 1rem;
+  background: var(--color-gray-50);
+  border: 1px solid var(--color-gray-200);
   border-radius: 0.75rem;
 }
 
+.line-group:not(.line-group--active) {
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease-default), background-color 0.15s var(--ease-default);
+}
+
+.line-group:not(.line-group--active):hover {
+  background: var(--color-white);
+  border-color: var(--color-gray-300);
+}
+
 .line-group--active {
-  border-color: var(--color-brand);
+  background: var(--color-white);
+  border: 2px solid var(--color-brand);
+  padding: calc(0.75rem - 1px) calc(1rem - 1px) calc(1rem - 1px);
+  box-shadow: var(--shadow-sm);
 }
 
-.line-group__label {
-  align-self: flex-start;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-gray-500);
-}
-
-.add-line-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: rgb(17 24 39 / 0.5);
-  display: flex;
+/* The stairlift number in front of each card's product name, matching the
+   "Stairlift N" tabs. */
+.line-group__badge {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  flex-shrink: 0;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  border-radius: 9999px;
+  background: var(--color-gray-200);
+  color: var(--color-gray-700);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
-.add-line-modal__panel {
-  width: 100%;
-  max-width: 22rem;
-  background: var(--color-white);
-  border-radius: 1rem;
-  box-shadow: var(--shadow-md);
-  padding: 1.5rem;
+.line-group--active .line-group__badge {
+  background: var(--color-brand);
+  color: var(--color-white);
 }
 
-.add-line-modal__actions {
+.line-tabs__add {
+  position: relative;
+}
+
+.add-line-menu {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0;
+  z-index: 20;
+  min-width: 11rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  padding: 0.25rem;
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-200);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-md);
+}
+
+.add-line-menu__item {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  text-align: left;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  color: var(--color-gray-800);
+}
+
+.add-line-menu__item:hover,
+.add-line-menu__item:focus-visible {
+  background: var(--color-gray-100);
 }
 
 /* --- quote details (comment / expiration / ship-to) --- */

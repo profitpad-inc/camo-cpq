@@ -1013,8 +1013,8 @@ const state = {
   // line. Filled by resetLines() right after this object.
   lines: [],
   activeLineId: null,
-  // the "+" chooser in the Quote Summary (clone the active line or add a new one)
-  addLineModalOpen: false,
+  // the "+" popover in the Quote Summary (clone the active line or add a new one)
+  addLineMenuOpen: false,
   openProductCat: null,
   openAddonCat: null,
   productSearchQuery: "",
@@ -1072,7 +1072,7 @@ function resetLines() {
   const line = newLine();
   state.lines = [line];
   state.activeLineId = line.id;
-  state.addLineModalOpen = false;
+  state.addLineMenuOpen = false;
 }
 
 resetLines();
@@ -1637,13 +1637,13 @@ function selectLine(id) {
   render();
 }
 
-function openAddLineModal() {
-  state.addLineModalOpen = true;
+function toggleAddLineMenu() {
+  state.addLineMenuOpen = !state.addLineMenuOpen;
   render();
 }
 
-function closeAddLineModal() {
-  state.addLineModalOpen = false;
+function closeAddLineMenu() {
+  state.addLineMenuOpen = false;
   render();
 }
 
@@ -1652,7 +1652,7 @@ function closeAddLineModal() {
 function addLine(clone) {
   const line = newLine(clone ? getActiveLine() : null);
   state.lines.push(line);
-  state.addLineModalOpen = false;
+  state.addLineMenuOpen = false;
   state.pricingDirty = true;
   focusLine(line.id);
   render();
@@ -1831,11 +1831,6 @@ function isShipToComplete() {
 function toggleMargin() {
   state.marginHeld = !state.marginHeld;
   render();
-  if (state.marginHeld) {
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
-    });
-  }
 }
 
 function roundToCent(n) {
@@ -2295,20 +2290,26 @@ function addonExtrasHtml(addon) {
   return `<div class="addon-extra">${configHtml}${qtyHtml}</div>`;
 }
 
-function accordionSectionHtml({ title, count, isOpen, toggleAction, cat, bodyHtml }) {
+// `disabledReason`, when set, greys the section out, keeps it closed, and shows
+// the reason as a hover tooltip. It's aria-disabled rather than disabled, since
+// a truly disabled button doesn't show its title tooltip in every browser; the
+// click handler checks aria-disabled instead.
+function accordionSectionHtml({ title, count, isOpen, toggleAction, cat, bodyHtml, disabledReason }) {
+  const open = isOpen && !disabledReason;
   return `
     <div>
       <button type="button" data-action="${toggleAction}" data-cat="${escapeHtml(cat)}"
-        class="accordion-toggle">
+        ${disabledReason ? `aria-disabled="true" title="${escapeHtml(disabledReason)}"` : ""}
+        class="${classNames("accordion-toggle", disabledReason && "accordion-toggle--disabled")}">
         <span class="accordion-toggle__title">${escapeHtml(title)}</span>
         <div class="accordion-toggle__meta">
           <span class="badge">${count}</span>
-          <svg class="${classNames("accordion-toggle__chevron", isOpen ? "accordion-toggle__chevron--open" : "")}" viewBox="0 0 20 20" fill="currentColor">
+          <svg class="${classNames("accordion-toggle__chevron", open ? "accordion-toggle__chevron--open" : "")}" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
           </svg>
         </div>
       </button>
-      ${isOpen ? `<div class="accordion-body">${bodyHtml}</div>` : ""}
+      ${open ? `<div class="accordion-body">${bodyHtml}</div>` : ""}
     </div>
   `;
 }
@@ -2336,6 +2337,9 @@ function productSectionHtml() {
           const items = searchedProducts.filter((p) => p.category === cat);
           if (items.length === 0) return "";
           const isOpen = query ? true : state.openProductCat === cat;
+          // A group with nothing of the quote's brand in it is greyed out
+          // whole; mixed groups grey out just the other-brand cards below.
+          const groupLocked = Boolean(brand) && items.every((p) => brandOf(p.sku) !== brand);
           const body = items
             .map((p) =>
               optionCardHtml({
@@ -2357,6 +2361,9 @@ function productSectionHtml() {
             toggleAction: "toggle-product-cat",
             cat,
             bodyHtml: `<div class="stack-3">${body}</div>`,
+            disabledReason: groupLocked
+              ? `Products from different manufacturers can't be on the same quote. This quote is ${brandDisplayName(brand)} only.`
+              : null,
           });
         })
         .join("");
@@ -2632,11 +2639,11 @@ function quoteDetailsHtml() {
   `;
 }
 
-// One row per stairlift ("Stairlift 1", "Stairlift 2", ...) above the line
-// items: clicking one points the product/add-on panels at it, the x removes it
-// (only once there's more than one), and + opens the clone/new chooser
-// (addLineModalHtml). + stays disabled while any line still has no product, so
-// empty lines can't pile up.
+// One tab per stairlift ("Stairlift 1", "Stairlift 2", ...), on the left of
+// the Subtotal row: clicking one points the product/add-on panels at it, the x
+// removes it (only once there's more than one), and + toggles the clone/new popover right
+// beside it (addLineMenuHtml). + stays disabled while any line still has no
+// product, so empty lines can't pile up.
 function lineTabsHtml() {
   const emptyLine = state.lines.find((l) => !getSelectedProduct(l));
   const canRemove = state.lines.length > 1;
@@ -2659,29 +2666,27 @@ function lineTabsHtml() {
   return `
     <div class="line-tabs">
       ${tabsHtml}
-      <button type="button" data-action="open-add-line" class="line-tab line-tab--add"
-        ${emptyLine ? `disabled title="Choose a product for ${escapeHtml(lineLabel(emptyLine))} first"` : `title="Add another stairlift"`}
-        aria-label="Add another stairlift">+</button>
+      <div class="line-tabs__add">
+        <button type="button" data-action="toggle-add-line" class="line-tab line-tab--add"
+          ${emptyLine ? `disabled title="Choose a product for ${escapeHtml(lineLabel(emptyLine))} first"` : `title="Add another stairlift"`}
+          aria-label="Add another stairlift" aria-expanded="${state.addLineMenuOpen}">+</button>
+        ${addLineMenuHtml()}
+      </div>
     </div>
   `;
 }
 
-// The chooser + opens: copy the stairlift being edited, or start a blank one.
-function addLineModalHtml() {
-  if (!state.addLineModalOpen) return "";
-  const active = getActiveLine();
+// The popover + opens, anchored right beside it: copy the stairlift being
+// edited, or start a blank one. Closed by clicking anywhere outside it or by
+// Escape (see the document listeners below).
+function addLineMenuHtml() {
+  if (!state.addLineMenuOpen) return "";
   return `
-    <div class="add-line-modal" data-action="close-add-line-backdrop">
-      <div class="add-line-modal__panel" role="dialog" aria-modal="true" aria-labelledby="add-line-modal-title">
-        <h3 class="section-title" id="add-line-modal-title">Add another stairlift</h3>
-        <div class="add-line-modal__actions">
-          <button type="button" data-action="add-line" data-clone="true" class="btn btn--primary btn--block">
-            Clone ${escapeHtml(lineLabel(active))}
-          </button>
-          <button type="button" data-action="add-line" class="btn btn--muted btn--block">Add a new one</button>
-          <button type="button" data-action="close-add-line" class="btn btn--muted btn--block">Cancel</button>
-        </div>
-      </div>
+    <div class="add-line-menu" role="menu">
+      <button type="button" role="menuitem" data-action="add-line" data-clone="true" class="add-line-menu__item">
+        Clone ${escapeHtml(lineLabel(getActiveLine()))}
+      </button>
+      <button type="button" role="menuitem" data-action="add-line" class="add-line-menu__item">Add a new one</button>
     </div>
   `;
 }
@@ -2737,10 +2742,12 @@ function summarySectionHtml() {
   const marginHeld = state.marginHeld;
   const showCostColumn = marginHeld && SHOW_COST_COLUMN;
 
-  const itemRowHtml = (item) => `
+  // `badgeHtml` (the stairlift number, multi-stairlift quotes only) goes in
+  // front of the product's name, on the same line.
+  const itemRowHtml = (item, badgeHtml = "") => `
           <div class="${classNames("line-item", item.addon && "line-item--addon")}">
             <div class="line-item__body">
-              <div class="line-item__name">${escapeHtml(item.name)}${item.qty > 1 ? ` <span class="line-item__qty">× ${item.qty}</span>` : ""}</div>
+              <div class="line-item__name">${badgeHtml}${escapeHtml(item.name)}${item.qty > 1 ? ` <span class="line-item__qty">× ${item.qty}</span>` : ""}</div>
               ${item.description ? `<div class="line-item__desc">${escapeHtml(item.description)}</div>` : ""}
             </div>
             ${showCostColumn ? `<div class="line-item__cost">${item.cost > 0 ? currencyWhole.format(item.cost) : "—"}</div>` : ""}
@@ -2751,20 +2758,29 @@ function summarySectionHtml() {
         `;
 
   // With one stairlift the rows read exactly as they always have; with more,
-  // each line's rows sit under its own label, the one being edited highlighted.
+  // each line's rows sit in their own card, the one being edited highlighted.
+  // Each card is identified by a small numbered badge in front of its product
+  // name (matching the "Stairlift N" tabs) rather than a title row of its own.
+  // Clicking anywhere on a card switches the product/add-on panels to it; the
+  // badge is a real button so that's reachable from the keyboard too.
   const bodyHtml = multiLine
     ? groups
-        .map(
-          ({ line, items }) => `
-        <div class="${classNames("line-group", line.id === state.activeLineId && "line-group--active")}">
-          <button type="button" data-action="select-line" data-line-id="${line.id}" class="line-group__label">
-            ${escapeHtml(lineLabel(line))}
-          </button>
-          ${items.length ? items.map(itemRowHtml).join("") : `<p class="muted-text">No product selected yet.</p>`}
-        </div>`,
-        )
+        .map(({ line, items }) => {
+          const badgeHtml = `<button type="button" data-action="select-line" data-line-id="${line.id}"
+            class="line-group__badge" aria-label="${escapeHtml(lineLabel(line))}"
+            title="${escapeHtml(lineLabel(line))}">${state.lines.indexOf(line) + 1}</button>`;
+          return `
+        <div class="${classNames("line-group", line.id === state.activeLineId && "line-group--active")}"
+          data-action="select-line" data-line-id="${line.id}">
+          ${
+            items.length
+              ? items.map((item, i) => itemRowHtml(item, i === 0 ? badgeHtml : "")).join("")
+              : `<div class="line-item__name">${badgeHtml}<span class="muted-text">No product selected yet.</span></div>`
+          }
+        </div>`;
+        })
         .join("")
-    : groups[0].items.map(itemRowHtml).join("");
+    : groups[0].items.map((item) => itemRowHtml(item)).join("");
 
   const rowsHtml =
     !hasAnyProduct && !multiLine
@@ -2818,8 +2834,14 @@ function summarySectionHtml() {
               ? "Already pushed — change the price to push again"
               : "";
 
+  // When the over-max discount is the reason push is blocked, the button is
+  // aria-disabled instead of disabled: it still looks disabled, but a click
+  // reaches the handler, which flashes the red RD code to show why
+  // (flashMaxDiscountCode). A truly disabled button swallows the click.
+  const blockedByDiscount = pushHubspotTitle === "Discount is over the allowed maximum";
   const pushButtonHtml = `
-    <button type="button" data-action="push-hubspot" ${pushHubspotDisabled ? "disabled" : ""}
+    <button type="button" data-action="push-hubspot"
+      ${blockedByDiscount ? `aria-disabled="true"` : pushHubspotDisabled ? "disabled" : ""}
       ${pushHubspotTitle ? `title="${escapeHtml(pushHubspotTitle)}"` : ""}
       class="btn btn--primary">
       ${state.quoteLoading ? "Sending…" : "Push to HubSpot"}
@@ -2863,57 +2885,58 @@ function summarySectionHtml() {
       </div>
       <p class="confidential-notice">Confidential. Pricing shown below is for internal/authorized use only, not for external distribution.</p>
 
-      ${lineTabsHtml()}
       ${rowsHtml}
 
       <div class="totals">
-        <div class="totals__row">
-          <span class="totals__label">Subtotal</span>
-          ${showCostColumn ? `<span class="totals__amount">${currencyWhole.format(cost)}</span>` : ""}
-          <span class="totals__amount totals__amount--strong">${currencyWhole.format(subtotal)}</span>
-        </div>
-
-        <div class="totals__row totals__row--discount">
-          <span class="totals__label">Discount</span>
-          ${showCostColumn ? `<span class="totals__spacer"></span>` : ""}
-          <div class="discount-controls">
-            <div class="segmented">
-              <button type="button" data-action="set-discount-type" data-type="$" class="${classNames(
-                "segmented__btn",
-                state.discountType === "$" ? "segmented__btn--active" : "",
-              )}">$</button>
-              <button type="button" data-action="set-discount-type" data-type="%" class="${classNames(
-                "segmented__btn",
-                state.discountType === "%" ? "segmented__btn--active" : "",
-              )}">%</button>
-            </div>
-            <input type="text" inputmode="${state.discountType === "$" ? "numeric" : "decimal"}" id="discount-value-input"
-              data-action="set-discount-value" value="${escapeHtml(state.discountValue)}"
-              class="input input--discount" ${FIELD_NO_AUTOFILL_ATTRS}
-              placeholder="0" />
-          </div>
-        </div>
-        ${
-          discountAmount > 0
-            ? `<div class="totals__row totals__row--applied">
-                <span class="totals__label">Discount applied</span>
-                ${showCostColumn ? `<span class="totals__spacer"></span>` : ""}
-                <span class="totals__amount">-${currencyWhole.format(discountAmount)}</span>
-              </div>`
-            : ""
-        }
-
-        <div class="totals__row">
-          <span class="totals__label">Tax</span>
-          ${showCostColumn ? `<span class="totals__spacer"></span>` : ""}
-          <span class="totals__amount totals__amount--strong">${currency.format(tax)}</span>
-        </div>
-
-        <div class="totals__row totals__row--total">
-          <span class="totals__label">Total</span>
-          ${showCostColumn ? `<span class="totals__spacer"></span>` : ""}
-          <span class="totals__amount">${currency.format(total)}</span>
-        </div>
+        ${lineTabsHtml()}
+        <table class="totals-table">
+          <tbody>
+            <tr>
+              <th scope="row">Subtotal</th>
+              ${showCostColumn ? `<td class="totals-table__cost">${currency.format(cost)}</td>` : ""}
+              <td>${currency.format(subtotal)}</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                Discount${
+                  state.discountType === "%" && discountAmount > 0
+                    ? ` <span class="totals-table__discount-amount">(-${currency.format(discountAmount)})</span>`
+                    : ""
+                }
+              </th>
+              ${showCostColumn ? `<td class="totals-table__cost"></td>` : ""}
+              <td>
+                <div class="totals-table__discount-field">
+                  <div class="segmented segmented--compact">
+                    <button type="button" data-action="set-discount-type" data-type="$" class="${classNames(
+                      "segmented__btn",
+                      state.discountType === "$" ? "segmented__btn--active" : "",
+                    )}">$</button>
+                    <button type="button" data-action="set-discount-type" data-type="%" class="${classNames(
+                      "segmented__btn",
+                      state.discountType === "%" ? "segmented__btn--active" : "",
+                    )}">%</button>
+                  </div>
+                  <input type="text" inputmode="${state.discountType === "$" ? "numeric" : "decimal"}" id="discount-value-input"
+                    data-action="set-discount-value" value="${escapeHtml(state.discountValue)}"
+                    class="${classNames("totals-table__input", discountAmount > 0 && "totals-table__input--applied")}"
+                    aria-label="Discount ${state.discountType === "$" ? "in dollars" : "in percent"}"
+                    ${FIELD_NO_AUTOFILL_ATTRS} placeholder="0" />
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Sales Tax</th>
+              ${showCostColumn ? `<td class="totals-table__cost"></td>` : ""}
+              <td>${currency.format(tax)}</td>
+            </tr>
+            <tr class="totals-table__total">
+              <th scope="row">Total</th>
+              ${showCostColumn ? `<td class="totals-table__cost"></td>` : ""}
+              <td>${currency.format(total)}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       ${maxDiscountCodeHtml(discountAmount, maxDiscount)}
 
@@ -2934,7 +2957,6 @@ function summarySectionHtml() {
             : ""
         }
       </div>
-      ${addLineModalHtml()}
     </div>
   `;
 }
@@ -2952,6 +2974,17 @@ function maxDiscountCodeHtml(discountAmount, maxDiscount) {
   const remaining = Math.round(maxDiscount - discountAmount);
   const overClass = remaining < 0 ? " totals__code--over" : "";
   return `<div class="totals__code${overClass}">RD${remaining}</div>`;
+}
+
+// Pulses the MD/RD code under the totals, used when a push is blocked by an
+// over-max discount. Done straight on the DOM (no re-render); removing the
+// class and forcing a reflow first lets repeated clicks restart the animation.
+function flashMaxDiscountCode() {
+  const el = document.querySelector(".totals__code");
+  if (!el) return;
+  el.classList.remove("totals__code--flash");
+  void el.offsetWidth;
+  el.classList.add("totals__code--flash");
 }
 
 // The Pricebook dropdown in the Quote Details column, below Comment, shown only
@@ -3479,6 +3512,15 @@ function renderSummary() {
 // if this check ran after that, e.target.closest("#header-user-menu") would
 // already be evaluating a disconnected node and wrongly report "outside",
 // closing the menu on the same click that opened it.
+// Same idea for the add-stairlift popover: any click outside the + button and
+// its popover closes it (clicks on the + itself toggle it via the action
+// switch, and its menu items close it themselves via addLine()).
+document.addEventListener("click", (e) => {
+  if (!state.addLineMenuOpen) return;
+  if (e.target.closest(".line-tabs__add")) return;
+  closeAddLineMenu();
+});
+
 document.addEventListener("click", (e) => {
   if (!state.userMenuOpen) return;
   if (e.target.closest("#header-user-menu")) return;
@@ -3500,7 +3542,7 @@ document.addEventListener("click", (e) => {
       break;
     }
     case "toggle-product-cat":
-      toggleProductCat(el.dataset.cat);
+      if (el.getAttribute("aria-disabled") !== "true") toggleProductCat(el.dataset.cat);
       break;
     case "toggle-addon-cat":
       toggleAddonCat(el.dataset.cat);
@@ -3520,18 +3562,11 @@ document.addEventListener("click", (e) => {
     case "remove-line":
       removeLine(Number(el.dataset.lineId));
       break;
-    case "open-add-line":
-      if (!el.hasAttribute("disabled")) openAddLineModal();
+    case "toggle-add-line":
+      if (!el.hasAttribute("disabled")) toggleAddLineMenu();
       break;
     case "add-line":
       addLine(el.dataset.clone === "true");
-      break;
-    case "close-add-line":
-      closeAddLineModal();
-      break;
-    case "close-add-line-backdrop":
-      // same as close-send-quote-backdrop: only a click on the backdrop itself
-      if (e.target === el) closeAddLineModal();
       break;
     case "set-discount-type":
       setDiscountType(el.dataset.type);
@@ -3540,7 +3575,8 @@ document.addEventListener("click", (e) => {
       toggleMargin();
       break;
     case "push-hubspot":
-      handlePushToHubspot();
+      if (el.getAttribute("aria-disabled") === "true") flashMaxDiscountCode();
+      else handlePushToHubspot();
       break;
     case "skip-deal-select":
       skipToPriceLookup();
@@ -3682,8 +3718,8 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.quoteEmailModalOpen) {
     closeSendQuoteModal();
   }
-  if (e.key === "Escape" && state.addLineModalOpen) {
-    closeAddLineModal();
+  if (e.key === "Escape" && state.addLineMenuOpen) {
+    closeAddLineMenu();
   }
   if (e.key === "Escape" && state.userMenuOpen) {
     state.userMenuOpen = false;
