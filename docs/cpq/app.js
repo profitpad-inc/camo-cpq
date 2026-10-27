@@ -2571,8 +2571,17 @@ function summarySectionHtml() {
   // The install address is mandatory, but it only exists on a deal-backed
   // quote, so this gate only applies once a deal is selected.
   const shipToIncomplete = Boolean(state.selectedDeal) && !isShipToComplete();
+  // Same test that turns the RD code red (see maxDiscountCodeHtml): the
+  // discount is more than the selection's summed max_discount allows.
+  const overMaxDiscount = discountAmount > 0 && Math.round(maxDiscount - discountAmount) < 0;
   const pushHubspotDisabled =
-    !state.isOnline || !state.selectedDeal || !selectedProduct || shipToIncomplete || state.quoteLoading || alreadyPushed;
+    !state.isOnline ||
+    !state.selectedDeal ||
+    !selectedProduct ||
+    shipToIncomplete ||
+    overMaxDiscount ||
+    state.quoteLoading ||
+    alreadyPushed;
   const pushHubspotTitle = !state.isOnline
     ? "No internet connection"
     : !state.selectedDeal
@@ -2581,9 +2590,11 @@ function summarySectionHtml() {
         ? "Select a product first"
         : shipToIncomplete
           ? "Complete the install address first"
-          : alreadyPushed
-            ? "Already pushed — change the price to push again"
-            : "";
+          : overMaxDiscount
+            ? "Discount is over the allowed maximum"
+            : alreadyPushed
+              ? "Already pushed — change the price to push again"
+              : "";
 
   const pushButtonHtml = `
     <button type="button" data-action="push-hubspot" ${pushHubspotDisabled ? "disabled" : ""}
