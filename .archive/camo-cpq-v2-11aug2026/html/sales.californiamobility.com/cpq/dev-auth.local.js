@@ -1,0 +1,12 @@
+// Copy this file to dev-auth.local.js (same directory) to skip Google
+// Sign-In during local development, on both localhost and a phone hitting
+// this computer's LAN IP over wifi. See "local dev auth bypass" in app.js
+// for how this is gated so it can never activate in production.
+//
+// Set this to the same password n8n's pricing endpoint still accepts via
+// ?p=<password> (see HANDOFF.md, "the old ?p= password check").
+//
+// dev-auth.local.js itself is gitignored, never commit it.
+window.__CPQ_DEV_AUTH__ = {
+  password: "13jul2026",
+};

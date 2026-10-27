@@ -1,2 +1,4 @@
 docs/cpq/dev-auth.local.js
 .DS_Store
+node_modules/
+.claude/settings.local.json

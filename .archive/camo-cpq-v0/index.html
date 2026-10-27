@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camo CPQ</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles/style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+
+<body>
+    <h1>Camo CPQ</h1>
+
+    <div id="cpq-form">
+        <label>Product:
+            <select id="product">
+                <option value="100">Product A - $100</option>
+                <option value="200">Product B - $200</option>
+            </select>
+        </label>
+        <label>Quantity:
+            <input type="number" id="quantity" value="1" min="1">
+        </label>
+        <button id="addQuote">Add Quote</button>
+    </div>
+
+    <h2>Quote Summary</h2>
+    <ul id="quoteList"></ul>
+
+    <button id="syncHubSpot">Sync to HubSpot</button>
+
+    <script src="app.js"></script>
+    <script src="service-worker.js"></script>
+</body>
+
+</html>

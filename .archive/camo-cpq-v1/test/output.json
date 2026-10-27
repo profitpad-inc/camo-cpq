@@ -1,0 +1,1291 @@
+{
+    "product_categories": [
+        "Bruno Indoor Straight Stairlift",
+        "Bruno Outdoor Straight Stairlift",
+        "Bruno Indoor Curved Stairlift",
+        "Bruno Outdoor Curved Stairlift"
+    ],
+    "addon_categories": [
+        "Rail Options",
+        "Safety Options",
+        "Cosmetic Options",
+        "Other Options"
+    ],
+    "products": {
+        "bruno--SRE-2010-indoor-straight": {
+            "category": "Bruno Indoor Straight Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--SRE-2010-indoor-straight",
+            "name": "SRE-2010 Elite Straight Rail Stairlift",
+            "description": "",
+            "unit_price": 5635.0
+        },
+        "bruno--SRE-2010OS-indoor-residential-straight": {
+            "category": "Bruno Indoor Straight Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--SRE-2010OS-indoor-residential-straight",
+            "name": "SRE-2010OS Residential Elite Straight Rail Stairlift with Overspeed Brake",
+            "description": "Meets 7.8 Safeties and Governors (overspeed) product requirement per ASME A18.1 - 2017 standard",
+            "unit_price": 5885.0
+        },
+        "bruno--SRE-2010E-outdoor-straight": {
+            "category": "Bruno Outdoor Straight Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--SRE-2010E-outdoor-straight",
+            "name": "SRE-2010E Outdoor Elite Straight Rail Stairlift",
+            "description": "(Bag cover included if Canopy is NOT selected)",
+            "unit_price": 7595.0
+        },
+        "bruno--SRE-2010EOS-outdoor-residential-straight": {
+            "category": "Bruno Outdoor Straight Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--SRE-2010EOS-outdoor-residential-straight",
+            "name": "SRE-2010EOS Outdoor Residential Elite Straight Rail Stairlift",
+            "description": "Meets 7.8 Safeties and Governors (overspeed) product requirement per ASME A18.1 - 2017 standard\n(Bag cover included if Canopy is NOT selected)",
+            "unit_price": 7835.0
+        },
+        "bruno--SRE-2010C-indoor-commercial-straight": {
+            "category": "Bruno Indoor Straight Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--SRE-2010C-indoor-commercial-straight",
+            "name": "SRE-2010C Commercial Elite Straight Rail Stairlift",
+            "description": "Overspeed brake",
+            "unit_price": 6810.0
+        },
+        "bruno--SRE-2010EC-outdoor-commercial-straight": {
+            "category": "Bruno Outdoor Straight Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--SRE-2010EC-outdoor-commercial-straight",
+            "name": "SRE-2010EC Outdoor Commercial Elite Straight Stairlift",
+            "description": "Overspeed brake",
+            "unit_price": 8770.0
+        },
+        "bruno--SRE-2010CAN-outdoor-straight": {
+            "category": "Bruno Outdoor Straight Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--SRE-2010CAN-outdoor-straight",
+            "name": "SRE-2010CAN Straight Rail Stairlift",
+            "description": "Meets CSA B355 Stairlift National Standard of Canada\n(Overspeed, override disable, barrier arm, e-stop & alarm)",
+            "unit_price": 8445.0
+        },
+        "bruno--SRE-3050-indoor-straight": {
+            "category": "Bruno Indoor Straight Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--SRE-3050-indoor-straight",
+            "name": "SRE-3050 - Elan Straight Rail Stairlift",
+            "description": "",
+            "unit_price": 3895.0
+        },
+        "bruno--CRE-2110-indoor-straight-top-overrun": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110-indoor-straight-top-overrun",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Top Overrun",
+            "description": "",
+            "unit_price": 8540.0
+        },
+        "bruno--CRE-2110-indoor-straight-bottom-overrun": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110-indoor-straight-bottom-overrun",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Bottom Overrun",
+            "description": "",
+            "unit_price": 8540.0
+        },
+        "bruno--CRE-2110-indoor-straight-intermediate-landing": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110-indoor-straight-intermediate-landing",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Intermediate Landing",
+            "description": "",
+            "unit_price": 9605.0
+        },
+        "bruno--CRE-2110-indoor-turn-90": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-90",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with 90° turn (outside/inside)",
+            "description": "",
+            "unit_price": 12940.0
+        },
+        "bruno--CRE-2110-indoor-turn-180": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-180",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with 180° turn (outside/inside)",
+            "description": "",
+            "unit_price": 14665.0
+        },
+        "bruno--CRE-2110-indoor-turn-custom": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-custom",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with custom radius turn (outside/inside)",
+            "description": "(up to 180° turn)",
+            "unit_price": 18655.0
+        },
+        "bruno--CRE-2110E-outdoor-straight-top": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110E-outdoor-straight-top",
+            "name": "CRE-2110E Elite Curve (Outdoor) with Straight Top",
+            "description": "",
+            "unit_price": 11205.0
+        },
+        "bruno--CRE-2110E-outdoor-bottom-overrun": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110E-outdoor-bottom-overrun",
+            "name": "CRE-2110E Elite Curve (Outdoor) with Bottom Overrun",
+            "description": "",
+            "unit_price": 11205.0
+        },
+        "bruno--CRE-2110E-outdoor-straight-intermediate-landing": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+            "name": "CRE-2110E Elite Curve (Outdoor) with Straight Intermediate Landing",
+            "description": "",
+            "unit_price": 12270.0
+        },
+        "bruno--CRE-2110E-outdoor-turn-90": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-90",
+            "name": "CRE-2110E Elite Curve (Outdoor) with 90° turn (outside/inside)",
+            "description": "",
+            "unit_price": 15600.0
+        },
+        "bruno--CRE-2110E-outdoor-turn-180": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-180",
+            "name": "CRE-2110E Elite Curve (Outdoor) with 180° turn (outside/inside)",
+            "description": "",
+            "unit_price": 17320.0
+        },
+        "bruno--CRE-2110E-outdoor-turn-custom": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "Bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-custom",
+            "name": "CRE-2110E Elite Curve (Outdoor) with custom radius turn (outside/inside)",
+            "description": "(up to 180° turn)",
+            "unit_price": 21320.0
+        }
+    },
+    "addons": {
+        "bruno--vinyl-upholstery-charcoal": {
+            "category": "Cosmetic Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--vinyl-upholstery-charcoal",
+            "name": "Vinyl upholstery color Charcoal",
+            "description": "",
+            "unit_price": 415.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat",
+                "bruno--vinyl-upholstery-espresso",
+                "bruno--vinyl-upholstery-cream",
+                "bruno--vinyl-upholstery-white"
+            ]
+        },
+        "bruno--vinyl-upholstery-espresso": {
+            "category": "Cosmetic Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--vinyl-upholstery-espresso",
+            "name": "Vinyl upholstery color Espresso",
+            "description": "",
+            "unit_price": 415.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat",
+                "bruno--vinyl-upholstery-charcoal",
+                "bruno--vinyl-upholstery-cream",
+                "bruno--vinyl-upholstery-white"
+            ]
+        },
+        "bruno--vinyl-upholstery-cream": {
+            "category": "Cosmetic Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--vinyl-upholstery-cream",
+            "name": "Vinyl upholstery color Cream",
+            "description": "Up to 180° turn",
+            "unit_price": 415.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat",
+                "bruno--vinyl-upholstery-charcoal",
+                "bruno--vinyl-upholstery-espresso",
+                "bruno--vinyl-upholstery-white"
+            ]
+        },
+        "bruno--vinyl-upholstery-white": {
+            "category": "Cosmetic Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--vinyl-upholstery-white",
+            "name": "Vinyl upholstery color White",
+            "description": "",
+            "unit_price": 415.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat",
+                "bruno--vinyl-upholstery-charcoal",
+                "bruno--vinyl-upholstery-espresso",
+                "bruno--vinyl-upholstery-cream"
+            ]
+        },
+        "bruno--drawings": {
+            "category": "Cosmetic Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--drawings",
+            "name": "Drawings ****",
+            "description": "",
+            "unit_price": 950.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--custom-rail-carriage-color": {
+            "category": "Cosmetic Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--custom-rail-carriage-color",
+            "name": "Custom Color Rail and Carriage",
+            "description": "",
+            "unit_price": 8000.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--keyed-paddle-control": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--keyed-paddle-control",
+            "name": "Keyed Paddle Control",
+            "description": "Automatically included on Commercial units",
+            "unit_price": 295.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--power-folding-footrest": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--power-folding-footrest",
+            "name": "Power Folding Footrest",
+            "description": "",
+            "unit_price": 675.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--power-footrest-switch": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--power-footrest-switch",
+            "name": "Power Footrest Switch",
+            "description": "Located in seat arm",
+            "unit_price": 55.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--larger-wider-power-footrest": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--larger-wider-power-footrest",
+            "name": "Larger and Wider Power Footrest",
+            "description": "2in (51mm)",
+            "unit_price": 890.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-wider-footrest"
+            ]
+        },
+        "bruno--power-swivel": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--power-swivel",
+            "name": "Power Swivel Seat",
+            "description": "Will not swivel at Mid-Park.  Swivels up to 85 degrees at top landing.",
+            "unit_price": 1060.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat"
+            ]
+        },
+        "bruno--adtl-standard-remote": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-standard-remote",
+            "name": "Additional Standard Remote Control",
+            "description": "2 included in standard price",
+            "unit_price": 260.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--adtl-keyed-remote": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-keyed-remote",
+            "name": "Additional Keyed Remote Control",
+            "description": "",
+            "unit_price": 260.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--adtl-rf-repeater-remote": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-rf-repeater-remote",
+            "name": "Additional RF Repeater Remote Control",
+            "description": "",
+            "unit_price": 330.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--mid-park-charge": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--mid-park-charge",
+            "name": "Mid Park and Charge",
+            "description": "Includes Charge Station and Call/Send Transmitter",
+            "unit_price": 445.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--larger-seat": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--larger-seat",
+            "name": "Larger Seat",
+            "description": "23in (584mm) Width Between Fixed Arms (not compatible with the Power Swivel Seat)",
+            "unit_price": 635.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010E-outdoor-straight",
+                "bruno--SRE-2010EOS-outdoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-2010EC-outdoor-commercial-straight",
+                "bruno--SRE-2010CAN-outdoor-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--power-swivel",
+                "bruno--vinyl-upholstery-charcoal",
+                "bruno--vinyl-upholstery-espresso",
+                "bruno--vinyl-upholstery-cream",
+                "bruno--vinyl-upholstery-white"
+            ]
+        },
+        "bruno--larger-wider-footrest": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--larger-wider-footrest",
+            "name": "Larger and Wider Footrest",
+            "description": "2in (51mm)",
+            "unit_price": 215.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010E-outdoor-straight",
+                "bruno--SRE-2010EOS-outdoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-2010EC-outdoor-commercial-straight",
+                "bruno--SRE-2010CAN-outdoor-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-wider-power-footrest"
+            ]
+        },
+        "bruno--keyed-remote-upgrade": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--keyed-remote-upgrade",
+            "name": "Keyed Remote Control Upgrade (Qty - 2)",
+            "description": "Automatically included on Outdoor SRE and CRE",
+            "unit_price": 435.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010E-outdoor-straight",
+                "bruno--SRE-2010EOS-outdoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-2010EC-outdoor-commercial-straight",
+                "bruno--SRE-2010CAN-outdoor-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--adjustable-clamps": {
+            "category": "Other Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adjustable-clamps",
+            "name": "Adjustable Clamps",
+            "description": "",
+            "unit_price": 90.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010E-outdoor-straight",
+                "bruno--SRE-2010EOS-outdoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-2010EC-outdoor-commercial-straight",
+                "bruno--SRE-2010CAN-outdoor-straight",
+                "bruno--SRE-3050-indoor-straight"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--top-overrun": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--top-overrun",
+            "name": "Top Overrun",
+            "description": "",
+            "unit_price": 1540.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--bottom-overrun": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--bottom-overrun",
+            "name": "Bottom Overrun",
+            "description": "",
+            "unit_price": 1540.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--top-180-park": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--top-180-park",
+            "name": "Top 180° Park Position ***",
+            "description": "",
+            "unit_price": 3020.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--top-90-park"
+            ]
+        },
+        "bruno--bottom-180-park": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--bottom-180-park",
+            "name": "Bottom 180° Park Position ***",
+            "description": "",
+            "unit_price": 3020.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--bottom-90-park"
+            ]
+        },
+        "bruno--top-90-park": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--top-90-park",
+            "name": "Top 90° Park Position ***",
+            "description": "",
+            "unit_price": 2615.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--top-180-park"
+            ]
+        },
+        "bruno--bottom-90-park": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--bottom-90-park",
+            "name": "Bottom 90° Park Position ***",
+            "description": "",
+            "unit_price": 2615.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--bottom-180-park"
+            ]
+        },
+        "bruno--adtl-180-turn": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-180-turn",
+            "name": "Additional 180° Turn",
+            "description": "",
+            "unit_price": 3480.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--adtl-90-turn": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-90-turn",
+            "name": "Additional 90° Turn",
+            "description": "",
+            "unit_price": 3020.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--adtl-straight-intermediate-landing": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-straight-intermediate-landing",
+            "name": "Additional Straight Intermediate Landing",
+            "description": "",
+            "unit_price": 2210.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--adtl-turn-radius": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-turn-radius",
+            "name": "Additional Turn on Radius",
+            "description": "",
+            "unit_price": 4680.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--intermediate-turn-radius": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--intermediate-turn-radius",
+            "name": "Intermediate Turn of Radius",
+            "description": "",
+            "unit_price": 4680.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--special-bends": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--special-bends",
+            "name": "Special Bends (angle other than 90° or 180°)",
+            "description": "",
+            "unit_price": 285.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--rf-repeater-kit": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--rf-repeater-kit",
+            "name": "RF Repeater Kit Warm Grey",
+            "description": "Required on rails exceeding 40ft, otherwise optional",
+            "unit_price": 900.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--adtl-rail-per-foot": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-rail-per-foot",
+            "name": "Additional Rail Beyond Standard (per foot)",
+            "description": "",
+            "unit_price": 135.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--adtl-charger": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--adtl-charger",
+            "name": "Additional Charger",
+            "description": "Required on rails exceeding 40ft, otherwise optional",
+            "unit_price": 470.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010E-outdoor-straight",
+                "bruno--SRE-2010EOS-outdoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-2010EC-outdoor-commercial-straight",
+                "bruno--SRE-2010CAN-outdoor-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--keyed-exterior-rf-repeater-kit": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--keyed-exterior-rf-repeater-kit",
+            "name": "Keyed/Exterior RF Repeater Kit",
+            "description": "Required on rails exceeding 40ft, otherwise optional",
+            "unit_price": 915.0,
+            "parent_skus": [
+                "bruno--SRE-2010E-outdoor-straight",
+                "bruno--SRE-2010EOS-outdoor-residential-straight",
+                "bruno--SRE-2010EC-outdoor-commercial-straight",
+                "bruno--SRE-2010CAN-outdoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--15.5ft-anodized-manual-folding-rail": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--15.5ft-anodized-manual-folding-rail",
+            "name": "15 ft 6 in (4.72 m) Anodized Manual Folding Rail",
+            "description": "",
+            "unit_price": 1025.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight"
+            ],
+            "incompatible_skus": [
+                "bruno--15.5ft-anodized-power-folding-rail",
+                "bruno--18ft-anodized-manual-folding-rail",
+                "bruno--18ft-anodized-power-folding-rail",
+                "bruno--20ft-anodized-power-folding-rail"
+            ]
+        },
+        "bruno--15.5ft-anodized-power-folding-rail": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--15.5ft-anodized-power-folding-rail",
+            "name": "15 ft 6 in (4.72 m) Anodized Power Folding Rail",
+            "description": "",
+            "unit_price": 2030.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight"
+            ],
+            "incompatible_skus": [
+                "bruno--15.5ft-anodized-manual-folding-rail",
+                "bruno--18ft-anodized-manual-folding-rail",
+                "bruno--18ft-anodized-power-folding-rail",
+                "bruno--20ft-anodized-power-folding-rail"
+            ]
+        },
+        "bruno--18ft-anodized-manual-folding-rail": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--18ft-anodized-manual-folding-rail",
+            "name": "18 ft (5.5 m) Anodized Manual Folding Rail",
+            "description": "",
+            "unit_price": 1305.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight"
+            ],
+            "incompatible_skus": [
+                "bruno--18ft-anodized-power-folding-rail",
+                "bruno--15.5ft-anodized-manual-folding-rail",
+                "bruno--15.5ft-anodized-power-folding-rail",
+                "bruno--20ft-anodized-power-folding-rail"
+            ]
+        },
+        "bruno--18ft-anodized-power-folding-rail": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--18ft-anodized-power-folding-rail",
+            "name": "18 ft (5.5 m) Anodized Power Folding Rail",
+            "description": "",
+            "unit_price": 2310.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-3050-indoor-straight"
+            ],
+            "incompatible_skus": [
+                "bruno--18ft-anodized-manual-folding-rail",
+                "bruno--15.5ft-anodized-power-folding-rail",
+                "bruno--15.5ft-anodized-manual-folding-rail",
+                "bruno--20ft-anodized-power-folding-rail"
+            ]
+        },
+        "bruno--20ft-anodized-power-folding-rail": {
+            "category": "Rail Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--20ft-anodized-power-folding-rail",
+            "name": "Anodized Rail Kit - 20 ft (6.1 m)",
+            "description": "",
+            "unit_price": 385.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010E-outdoor-straight",
+                "bruno--SRE-2010EOS-outdoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-2010EC-outdoor-commercial-straight",
+                "bruno--SRE-2010CAN-outdoor-straight",
+                "bruno--SRE-3050-indoor-straight"
+            ],
+            "incompatible_skus": [
+                "bruno--18ft-anodized-manual-folding-rail",
+                "bruno--15.5ft-anodized-power-folding-rail",
+                "bruno--15.5ft-anodized-manual-folding-rail",
+                "bruno--18ft-anodized-power-folding-rail"
+            ]
+        },
+        "bruno--meets-7.8-safties-governors": {
+            "category": "Safety Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--meets-7.8-safties-governors",
+            "name": "Meets 7.8 Safeties and Governors (overspeed)",
+            "description": "(Product requirement per ASME A18.1 - 2017 standard) ^^",
+            "unit_price": 580.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--commercial-packaging-overspeed-brake-key-switch": {
+            "category": "Safety Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--commercial-packaging-overspeed-brake-key-switch",
+            "name": "Commercial Package including overspeed brake and key switch on chair",
+            "description": "Does not include keyed remote controls (designed to U.S. specifications) (high degree carriage) ^^^",
+            "unit_price": 1140.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--meets-csa-b355-stairlift-national-standard-canada": {
+            "category": "Safety Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--meets-csa-b355-stairlift-national-standard-canada",
+            "name": "Meets CSA B355 Stairlift National Standard of Canada",
+            "description": "(overspeed, override disable, barrier arm, e-stop & alarm)",
+            "unit_price": 2085.0,
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        },
+        "bruno--4-point-harness": {
+            "category": "Safety Options",
+            "manufacturer": "Bruno",
+            "sku": "bruno--4-point-harness",
+            "name": "4 Point Harness",
+            "description": "",
+            "unit_price": 840.0,
+            "parent_skus": [
+                "bruno--SRE-2010-indoor-straight",
+                "bruno--SRE-2010OS-indoor-residential-straight",
+                "bruno--SRE-2010E-outdoor-straight",
+                "bruno--SRE-2010EOS-outdoor-residential-straight",
+                "bruno--SRE-2010C-indoor-commercial-straight",
+                "bruno--SRE-2010EC-outdoor-commercial-straight",
+                "bruno--SRE-2010CAN-outdoor-straight",
+                "bruno--SRE-3050-indoor-straight",
+                "bruno--CRE-2110-indoor-straight-top-overrun",
+                "bruno--CRE-2110-indoor-straight-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                ""
+            ]
+        }
+    }
+}

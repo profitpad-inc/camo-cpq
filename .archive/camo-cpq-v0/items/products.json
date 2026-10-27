@@ -1,0 +1,237 @@
+{
+    "products": {
+        "bruno--CRE-2110-indoor-straight-top": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-straight-top",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Top",
+            "description": "",
+            "dealer_cost": "5221.95",
+            "total_cost": "8540.00"
+        },
+        "bruno--CRE-2110-indoor-bottom-overrun": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-bottom-overrun",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Bottom Overrun",
+            "description": "",
+            "dealer_cost": "5221.95",
+            "total_cost": "8540.00"
+        },
+        "bruno--CRE-2110-indoor-straight-intermediate-landing": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-straight-intermediate-landing",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Intermediate Landing",
+            "description": "",
+            "dealer_cost": "5873.72",
+            "total_cost": "9605.00"
+        },
+        "bruno--CRE-2110-indoor-turn-90": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-90",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with 90° turn (outside/inside)",
+            "description": "",
+            "dealer_cost": "7910.52",
+            "total_cost": "12940.00"
+        },
+        "bruno--CRE-2110-indoor-turn-180": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-180",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with 180° turn (outside/inside)",
+            "description": "",
+            "dealer_cost": "8969.65",
+            "total_cost": "14665.00"
+        },
+        "bruno--CRE-2110-indoor-turn-custom": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-custom",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with custom radius turn (outside/inside)",
+            "description": "(up to 180° turn)",
+            "dealer_cost": "11413.80",
+            "total_cost": "18655.00"
+        },
+        "bruno--CRE-2110E-outdoor-straight-top": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-straight-top",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Top",
+            "description": "",
+            "dealer_cost": "5221.95",
+            "total_cost": "8540.00"
+        },
+        "bruno--CRE-2110E-outdoor-bottom-overrun": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-bottom-overrun",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Bottom Overrun",
+            "description": "",
+            "dealer_cost": "5221.95",
+            "total_cost": "8540.00"
+        },
+        "bruno--CRE-2110E-outdoor-straight-intermediate-landing": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Intermediate Landing",
+            "description": "",
+            "dealer_cost": "5873.72",
+            "total_cost": "9605.00"
+        },
+        "bruno--CRE-2110E-outdoor-turn-90": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-90",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with 90° turn (outside/inside)",
+            "description": "",
+            "dealer_cost": "7910.52",
+            "total_cost": "12940.00"
+        },
+        "bruno--CRE-2110E-outdoor-turn-180": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-180",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with 180° turn (outside/inside)",
+            "description": "",
+            "dealer_cost": "8969.65",
+            "total_cost": "14665.00"
+        },
+        "bruno--CRE-2110E-outdoor-turn-custom": {
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-custom",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with custom radius turn (outside/inside)",
+            "description": "(up to 180° turn)",
+            "dealer_cost": "11413.80",
+            "total_cost": "18655.00"
+        }
+    },
+    "addons": {
+        "bruno--larger-seat": {
+            "manufacturer": "bruno",
+            "sku": "bruno--larger-seat",
+            "name": "Larger Seat",
+            "description": "23in (584mm) Width Between Fixed Arms (not compatible with the Power Swivel Seat)",
+            "dealer_cost": "298.43",
+            "total_cost": "635.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--power-swivel"
+            ]
+        },
+        "bruno--larger-wider-footrest": {
+            "manufacturer": "bruno",
+            "sku": "bruno--larger-wider-footrest",
+            "name": "Larger and Wider Footrest",
+            "description": "2in (51mm)",
+            "dealer_cost": "95.50",
+            "total_cost": "215.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": []
+        },
+        "bruno--power-swivel": {
+            "manufacturer": "bruno",
+            "sku": "bruno--power-swivel",
+            "name": "Power Swivel Seat",
+            "description": "(will not swivel at Mid-Park)",
+            "dealer_cost": "498.38",
+            "total_cost": "1060.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat"
+            ]
+        },
+        "bruno--vinyl-upholstery-charcoal": {
+            "manufacturer": "bruno",
+            "sku": "bruno--vinyl-upholstery-charcoal",
+            "name": "Vinyl upholstery color Charcoal",
+            "description": "Not available on XL seat option",
+            "dealer_cost": "191.00",
+            "total_cost": "415.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": []
+        },
+        "bruno--vinyl-upholstery-espresso": {
+            "manufacturer": "bruno",
+            "sku": "bruno--vinyl-upholstery-espresso",
+            "name": "Vinyl upholstery color Espresso",
+            "description": "Not available on XL seat option",
+            "dealer_cost": "191.00",
+            "total_cost": "415.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": []
+        },
+        "bruno--vinyl-upholstery-cream": {
+            "manufacturer": "bruno",
+            "sku": "bruno--vinyl-upholstery-cream",
+            "name": "Vinyl upholstery color Cream",
+            "description": "Not available on XL seat option",
+            "dealer_cost": "191.00",
+            "total_cost": "415.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": []
+        },
+        "bruno--vinyl-upholstery-white": {
+            "manufacturer": "bruno",
+            "sku": "bruno--vinyl-upholstery-white",
+            "name": "Vinyl upholstery color White",
+            "description": "Not available on XL seat option",
+            "dealer_cost": "191.00",
+            "total_cost": "415.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": []
+        }
+    }
+}

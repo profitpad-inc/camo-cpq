@@ -1,0 +1,278 @@
+{
+    "product-categories": [
+        "Bruno Straight Stairlift",
+        "Bruno Indoor Curved Stairlift",
+        "Bruno Outdoor Curved Stairlift"
+    ],
+    "products": {
+        "bruno--CRE-2110-indoor-straight-top": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-straight-top",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Top",
+            "description": "",
+            "unit_cost": "5221.95",
+            "unit_price": "8540.00"
+        },
+        "bruno--CRE-2110-indoor-bottom-overrun": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-bottom-overrun",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Bottom Overrun",
+            "description": "",
+            "unit_cost": "5221.95",
+            "unit_price": "8540.00"
+        },
+        "bruno--CRE-2110-indoor-straight-intermediate-landing": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-straight-intermediate-landing",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with Straight Intermediate Landing",
+            "description": "",
+            "unit_cost": "5873.72",
+            "unit_price": "9605.00"
+        },
+        "bruno--CRE-2110-indoor-turn-90": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-90",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with 90° turn (outside/inside)",
+            "description": "",
+            "unit_cost": "7910.52",
+            "unit_price": "12940.00"
+        },
+        "bruno--CRE-2110-indoor-turn-180": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-180",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with 180° turn (outside/inside)",
+            "description": "",
+            "unit_cost": "8969.65",
+            "unit_price": "14665.00"
+        },
+        "bruno--CRE-2110-indoor-turn-custom": {
+            "category": "Bruno Indoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110-indoor-turn-custom",
+            "name": "CRE-2110 Elite Curve (Standard Indoor) with custom radius turn (outside/inside)",
+            "description": "(up to 180° turn)",
+            "unit_cost": "11413.80",
+            "unit_price": "18655.00"
+        },
+        "bruno--CRE-2110E-outdoor-straight-top": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-straight-top",
+            "name": "CRE-2110E Elite Curve (Outdoor) with Straight Top",
+            "description": "",
+            "unit_cost": "6851.38",
+            "unit_price": "11205.00"
+        },
+        "bruno--CRE-2110E-outdoor-bottom-overrun": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-bottom-overrun",
+            "name": "CRE-2110E Elite Curve (Outdoor) with Bottom Overrun",
+            "description": "",
+            "unit_cost": "6851.38",
+            "unit_price": "11205.00"
+        },
+        "bruno--CRE-2110E-outdoor-straight-intermediate-landing": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+            "name": "CRE-2110E Elite Curve (Outdoor) with Straight Intermediate Landing",
+            "description": "",
+            "unit_cost": "7503.16",
+            "unit_price": "12270.00"
+        },
+        "bruno--CRE-2110E-outdoor-turn-90": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-90",
+            "name": "CRE-2110E Elite Curve (Outdoor) with 90° turn (outside/inside)",
+            "description": "",
+            "unit_cost": "9543.83",
+            "unit_price": "15600.00"
+        },
+        "bruno--CRE-2110E-outdoor-turn-180": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-180",
+            "name": "CRE-2110E Elite Curve (Outdoor) with 180° turn (outside/inside)",
+            "description": "",
+            "unit_cost": "10599.08",
+            "unit_price": "17320.00"
+        },
+        "bruno--CRE-2110E-outdoor-turn-custom": {
+            "category": "Bruno Outdoor Curved Stairlift",
+            "manufacturer": "bruno",
+            "sku": "bruno--CRE-2110E-outdoor-turn-custom",
+            "name": "CRE-2110E Elite Curve (Outdoor) with custom radius turn (outside/inside)",
+            "description": "(up to 180° turn)",
+            "unit_cost": "13043.23",
+            "unit_price": "21320.00"
+        }
+    },
+    "addons": {
+        "bruno--larger-seat": {
+            "manufacturer": "bruno",
+            "sku": "bruno--larger-seat",
+            "name": "Larger Seat",
+            "description": "23in (584mm) Width Between Fixed Arms (not compatible with the Power Swivel Seat)",
+            "unit_cost": "298.43",
+            "unit_price": "635.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--power-swivel",
+                "bruno--vinyl-upholstery-charcoal",
+                "bruno--vinyl-upholstery-espresso",
+                "bruno--vinyl-upholstery-cream",
+                "bruno--vinyl-upholstery-white"
+            ]
+        },
+        "bruno--larger-wider-footrest": {
+            "manufacturer": "bruno",
+            "sku": "bruno--larger-wider-footrest",
+            "name": "Larger and Wider Footrest",
+            "description": "2in (51mm)",
+            "unit_cost": "95.50",
+            "unit_price": "215.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom",
+                "bruno--CRE-2110E-outdoor-straight-top",
+                "bruno--CRE-2110E-outdoor-bottom-overrun",
+                "bruno--CRE-2110E-outdoor-straight-intermediate-landing",
+                "bruno--CRE-2110E-outdoor-turn-90",
+                "bruno--CRE-2110E-outdoor-turn-180",
+                "bruno--CRE-2110E-outdoor-turn-custom"
+            ],
+            "incompatible_skus": []
+        },
+        "bruno--power-swivel": {
+            "manufacturer": "bruno",
+            "sku": "bruno--power-swivel",
+            "name": "Power Swivel Seat",
+            "description": "(will not swivel at Mid-Park)",
+            "unit_cost": "498.38",
+            "unit_price": "1060.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat"
+            ]
+        },
+        "bruno--vinyl-upholstery-charcoal": {
+            "manufacturer": "bruno",
+            "sku": "bruno--vinyl-upholstery-charcoal",
+            "name": "Vinyl upholstery color Charcoal",
+            "description": "Not available on XL seat option",
+            "unit_cost": "191.00",
+            "unit_price": "415.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat",
+                "bruno--vinyl-upholstery-espresso",
+                "bruno--vinyl-upholstery-cream",
+                "bruno--vinyl-upholstery-white"
+            ]
+        },
+        "bruno--vinyl-upholstery-espresso": {
+            "manufacturer": "bruno",
+            "sku": "bruno--vinyl-upholstery-espresso",
+            "name": "Vinyl upholstery color Espresso",
+            "description": "Not available on XL seat option",
+            "unit_cost": "191.00",
+            "unit_price": "415.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat",
+                "bruno--vinyl-upholstery-charcoal",
+                "bruno--vinyl-upholstery-cream",
+                "bruno--vinyl-upholstery-white"
+            ]
+        },
+        "bruno--vinyl-upholstery-cream": {
+            "manufacturer": "bruno",
+            "sku": "bruno--vinyl-upholstery-cream",
+            "name": "Vinyl upholstery color Cream",
+            "description": "Not available on XL seat option",
+            "unit_cost": "191.00",
+            "unit_price": "415.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat",
+                "bruno--vinyl-upholstery-charcoal",
+                "bruno--vinyl-upholstery-espresso",
+                "bruno--vinyl-upholstery-white"
+            ]
+        },
+        "bruno--vinyl-upholstery-white": {
+            "manufacturer": "bruno",
+            "sku": "bruno--vinyl-upholstery-white",
+            "name": "Vinyl upholstery color White",
+            "description": "Not available on XL seat option",
+            "unit_cost": "191.00",
+            "unit_price": "415.00",
+            "parent_skus": [
+                "bruno--CRE-2110-indoor-straight-top",
+                "bruno--CRE-2110-indoor-bottom-overrun",
+                "bruno--CRE-2110-indoor-straight-intermediate-landing",
+                "bruno--CRE-2110-indoor-turn-90",
+                "bruno--CRE-2110-indoor-turn-180",
+                "bruno--CRE-2110-indoor-turn-custom"
+            ],
+            "incompatible_skus": [
+                "bruno--larger-seat",
+                "bruno--vinyl-upholstery-charcoal",
+                "bruno--vinyl-upholstery-espresso",
+                "bruno--vinyl-upholstery-cream"
+            ]
+        }
+    }
+}
