@@ -1,9 +1,0 @@
-{
-    "name": "Camo CPQ",
-    "short_name": "CPQ",
-    "start_url": "./",
-    "scope": "./",
-    "display": "standalone",
-    "background_color": "#56b0cb",
-    "theme_color": "#56b0cb"
-}
