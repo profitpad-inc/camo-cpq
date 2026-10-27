@@ -1007,13 +1007,14 @@ const state = {
   // HubSpot push so n8n can write it back onto that contact.
   shipTo: { firstName: "", lastName: "", street: "", city: "", state: "", zip: "" },
 
-  productSku: null,
-  addonSkus: new Set(),
-  // sku -> selected configuration string (only relevant for add-ons with 2+
-  // configurations); sku -> raw typed quantity string (only relevant for
-  // add-ons with max_quantity > 1), see getAddonConfiguration/getAddonQuantity
-  addonConfig: new Map(),
-  addonQty: new Map(),
+  // One entry per stairlift on the quote, each with its own product and
+  // add-ons (see newLine). The product/add-on panels always edit the line
+  // whose id is activeLineId; the summary and the HubSpot push read every
+  // line. Filled by resetLines() right after this object.
+  lines: [],
+  activeLineId: null,
+  // the "+" chooser in the Quote Summary (clone the active line or add a new one)
+  addLineModalOpen: false,
   openProductCat: null,
   openAddonCat: null,
   productSearchQuery: "",
@@ -1048,8 +1049,65 @@ const state = {
   quoteEmailSent: false,
 };
 
-function getSelectedProduct() {
-  return state.products.find((p) => p.sku === state.productSku) || null;
+// A quote line is one stairlift: its product plus its own add-on selection.
+// addonConfig is sku -> selected configuration string (only relevant for
+// add-ons with 2+ configurations); addonQty is sku -> raw typed quantity
+// string (only relevant for add-ons with max_quantity > 1), see
+// getAddonConfiguration/getAddonQuantity. `id` is an instance id rather than
+// the product sku, so the same product can be on a quote twice. Passing
+// `from` copies that line's whole selection (the "Clone" choice).
+let nextLineId = 1;
+
+function newLine(from) {
+  return {
+    id: nextLineId++,
+    productSku: from ? from.productSku : null,
+    addonSkus: new Set(from ? from.addonSkus : []),
+    addonConfig: new Map(from ? from.addonConfig : []),
+    addonQty: new Map(from ? from.addonQty : []),
+  };
+}
+
+function resetLines() {
+  const line = newLine();
+  state.lines = [line];
+  state.activeLineId = line.id;
+  state.addLineModalOpen = false;
+}
+
+resetLines();
+
+function getActiveLine() {
+  return state.lines.find((l) => l.id === state.activeLineId) || state.lines[0];
+}
+
+// "Stairlift 1", "Stairlift 2", ... by position, so labels renumber when a
+// line is removed.
+function lineLabel(line) {
+  return `Stairlift ${state.lines.indexOf(line) + 1}`;
+}
+
+// The manufacturer part of a sku, everything before the first "--" (e.g.
+// "bruno" from "bruno--sre-3050--indoor-straight"). Every product on one
+// quote has to share it, so Bruno and Access products never mix.
+function brandOf(sku) {
+  return String(sku || "").split("--")[0].trim().toLowerCase();
+}
+
+function brandDisplayName(brand) {
+  return brand.charAt(0).toUpperCase() + brand.slice(1);
+}
+
+// The brand the active line is locked to by the other lines' products, or
+// null when no other line has a product yet (a single-product quote can
+// still switch brands freely).
+function lockedBrand() {
+  const other = state.lines.find((l) => l !== getActiveLine() && l.productSku);
+  return other ? brandOf(other.productSku) : null;
+}
+
+function getSelectedProduct(line = getActiveLine()) {
+  return state.products.find((p) => p.sku === line.productSku) || null;
 }
 
 function getProductScopedAddons(selectedProduct) {
@@ -1063,29 +1121,29 @@ function getProductScopedAddons(selectedProduct) {
 function getIncompatibleSkuSet() {
   const set = new Set();
   for (const a of state.addons) {
-    if (state.addonSkus.has(a.sku) && Array.isArray(a.incompatible_skus)) {
+    if (getActiveLine().addonSkus.has(a.sku) && Array.isArray(a.incompatible_skus)) {
       for (const inc of a.incompatible_skus) set.add(inc);
     }
   }
   return set;
 }
 
-function getSelectedAddons() {
-  return state.addons.filter((a) => state.addonSkus.has(a.sku));
+function getSelectedAddons(line = getActiveLine()) {
+  return state.addons.filter((a) => line.addonSkus.has(a.sku));
 }
 
 // Falls back to the first available configuration when none has been
 // explicitly chosen yet, so a push to HubSpot always carries a real value
 // instead of blank, same fallback pattern used for packages/defaults elsewhere.
-function getAddonConfiguration(addon) {
+function getAddonConfiguration(addon, line = getActiveLine()) {
   if (!addon.configurations.length) return null;
-  return state.addonConfig.get(addon.sku) || addon.configurations[0];
+  return line.addonConfig.get(addon.sku) || addon.configurations[0];
 }
 
 // The stored value is the raw typed string (see setAddonQuantity), not yet
 // clamped to [1, maxQuantity]; this is what pricing/the HubSpot push use.
-function getAddonQuantity(addon) {
-  const n = Math.round(Number(state.addonQty.get(addon.sku)));
+function getAddonQuantity(addon, line = getActiveLine()) {
+  const n = Math.round(Number(line.addonQty.get(addon.sku)));
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.min(n, addon.maxQuantity || 1);
 }
@@ -1094,7 +1152,7 @@ function getAddonQuantity(addon) {
 // isn't fought by a clamped value re-rendering over it mid-keystroke (same
 // reasoning as state.discountValue).
 function getAddonQuantityInputValue(addon) {
-  return state.addonQty.get(addon.sku) ?? "1";
+  return getActiveLine().addonQty.get(addon.sku) ?? "1";
 }
 
 // Collapses case and punctuation differences (spaces, hyphens, etc.) so a
@@ -1119,16 +1177,48 @@ function matchesSearch(item, words) {
   return words.every((word) => haystacks.some((h) => h.includes(word)));
 }
 
-// keep add-ons consistent with the selected product
+// keep the active line's add-ons consistent with its product
 function syncAddonsToProduct() {
-  const selectedProduct = getSelectedProduct();
+  const line = getActiveLine();
+  const selectedProduct = getSelectedProduct(line);
   if (!selectedProduct) {
-    if (state.addonSkus.size) state.addonSkus = new Set();
+    if (line.addonSkus.size) line.addonSkus = new Set();
     return;
   }
   const allowed = new Set(getProductScopedAddons(selectedProduct).map((a) => a.sku));
-  const next = new Set([...state.addonSkus].filter((sku) => allowed.has(sku)));
-  if (next.size !== state.addonSkus.size) state.addonSkus = next;
+  const next = new Set([...line.addonSkus].filter((sku) => allowed.has(sku)));
+  if (next.size !== line.addonSkus.size) line.addonSkus = next;
+}
+
+// Every line with a product chosen, in order; empty lines are skipped by the
+// totals (they add nothing) but block the push, see summarySectionHtml.
+function linesWithProduct() {
+  return state.lines.filter((l) => getSelectedProduct(l));
+}
+
+// Quote-wide figures summed across every line: subtotal (price), cost, tax
+// (each product's cost x rate, plus each add-on's price x rate) and max
+// discount (each add-on's per unit, times its quantity).
+function quoteFigures(taxRate) {
+  let subtotal = 0;
+  let cost = 0;
+  let tax = 0;
+  let maxDiscount = 0;
+  for (const line of linesWithProduct()) {
+    const product = getSelectedProduct(line);
+    subtotal += Number(product.unit_price || 0);
+    cost += Number(product.unit_cost || 0);
+    tax += Number(product.unit_cost || 0) * taxRate;
+    maxDiscount += product.maxDiscount || 0;
+    for (const a of getSelectedAddons(line)) {
+      const qty = getAddonQuantity(a, line);
+      subtotal += Number(a.unit_price || 0) * qty;
+      cost += Number(a.unit_cost || 0) * qty;
+      tax += Number(a.unit_price || 0) * qty * taxRate;
+      maxDiscount += (a.maxDiscount || 0) * qty;
+    }
+  }
+  return { subtotal, cost, tax, maxDiscount };
 }
 
 // --- actions ---
@@ -1235,6 +1325,7 @@ function signOut() {
   state.contactsError = null;
   state.selectedContactId = null;
   applyContactToShipTo(null);
+  resetLines();
   // maybeAutoLookupDeal() only ever runs its ?hs_deal_id= lookup once per
   // page load (dealAutoLookupAttempted guards against re-fetching on every
   // render); resetting it here lets a fresh sign-in resolve the deal again
@@ -1254,20 +1345,20 @@ function findPackageForDeal(deal) {
   );
 }
 
-// Sets state.addonSkus to a package's option_skus (intersected with the
-// add-ons actually loaded), shared by applyPackageSelection (deal auto-match)
+// Sets the active line's addonSkus to a package's option_skus (intersected
+// with the add-ons actually loaded), shared by applyPackageSelection (deal auto-match)
 // and selectProduct (product-sku auto-match) below.
 function applyPackageAddons(pkg) {
   if (!pkg) return;
   const allowedOptionSkus = new Set(pkg.optionSkus);
-  state.addonSkus = new Set(state.addons.filter((a) => allowedOptionSkus.has(a.sku)).map((a) => a.sku));
+  getActiveLine().addonSkus = new Set(state.addons.filter((a) => allowedOptionSkus.has(a.sku)).map((a) => a.sku));
 }
 
 function applyPackageSelection(pkg) {
   if (!pkg) return;
   const product = state.products.find((p) => p.sku === pkg.productSku);
   if (product) {
-    state.productSku = product.sku;
+    getActiveLine().productSku = product.sku;
     state.openProductCat = product.category;
   }
   applyPackageAddons(pkg);
@@ -1334,6 +1425,9 @@ function selectContact(contactId) {
 function chooseDeal(deal) {
   state.selectedDeal = deal;
   state.pricebookOverride = null;
+  // A different deal starts over at one stairlift; its package (if any)
+  // fills that first line.
+  resetLines();
   const pkg = findPackageForDeal(deal);
   applyPackageSelection(pkg);
   state.dealMatchFailed = !pkg;
@@ -1463,11 +1557,15 @@ function resolveInitialStep() {
 }
 
 function selectProduct(sku) {
+  // Same guard as the disabled product cards (see productSectionHtml): every
+  // stairlift on a quote has to be the same brand.
+  const brand = lockedBrand();
+  if (brand && brandOf(sku) !== brand) return;
   // Only auto-apply a matched package's add-ons when the product actually
   // changes, so re-clicking the already-selected product card doesn't wipe
   // out add-ons the rep has since customized away from the package default.
-  const productChanged = state.productSku !== sku;
-  state.productSku = sku;
+  const productChanged = getActiveLine().productSku !== sku;
+  getActiveLine().productSku = sku;
   if (productChanged) applyPackageAddons(findPackageForProduct(sku));
   syncAddonsToProduct();
   state.addonSearchQuery = "";
@@ -1478,22 +1576,22 @@ function selectProduct(sku) {
 }
 
 function toggleAddon(sku) {
-  const next = new Set(state.addonSkus);
+  const next = new Set(getActiveLine().addonSkus);
   if (next.has(sku)) next.delete(sku);
   else next.add(sku);
-  state.addonSkus = next;
+  getActiveLine().addonSkus = next;
   state.pricingDirty = true;
   render();
 }
 
 function clearAddons() {
-  state.addonSkus = new Set();
+  getActiveLine().addonSkus = new Set();
   state.pricingDirty = true;
   render();
 }
 
 function setAddonConfiguration(sku, value) {
-  state.addonConfig.set(sku, value);
+  getActiveLine().addonConfig.set(sku, value);
   state.pricingDirty = true;
   renderPicker();
   renderSummary();
@@ -1503,7 +1601,7 @@ function setAddonQuantity(sku, value) {
   // Keep only digits, same "sanitize but don't clamp" approach as
   // setDiscountValue; clamping to [1, maxQuantity] happens at read time
   // (getAddonQuantity), not here, so the field isn't fought while typing.
-  state.addonQty.set(sku, String(value).replace(/[^\d]/g, ""));
+  getActiveLine().addonQty.set(sku, String(value).replace(/[^\d]/g, ""));
   state.pricingDirty = true;
   renderPicker();
   renderSummary();
@@ -1519,6 +1617,57 @@ function decAddonQuantity(sku) {
   const addon = state.addons.find((a) => a.sku === sku);
   if (!addon) return;
   setAddonQuantity(sku, Math.max(getAddonQuantity(addon) - 1, 1));
+}
+
+// Points the product/add-on panels at another line. Search boxes and open
+// categories belong to whatever was being edited before, so they reset, with
+// the new line's product category opened so its selection is visible.
+function focusLine(id) {
+  state.activeLineId = id;
+  state.productSearchQuery = "";
+  state.addonSearchQuery = "";
+  const product = getSelectedProduct();
+  state.openProductCat = product ? product.category : null;
+  state.openAddonCat = null;
+}
+
+function selectLine(id) {
+  if (id === state.activeLineId) return;
+  focusLine(id);
+  render();
+}
+
+function openAddLineModal() {
+  state.addLineModalOpen = true;
+  render();
+}
+
+function closeAddLineModal() {
+  state.addLineModalOpen = false;
+  render();
+}
+
+// `clone` copies the active line's product and add-on selection (including
+// configurations and quantities); otherwise the new line starts empty.
+function addLine(clone) {
+  const line = newLine(clone ? getActiveLine() : null);
+  state.lines.push(line);
+  state.addLineModalOpen = false;
+  state.pricingDirty = true;
+  focusLine(line.id);
+  render();
+}
+
+function removeLine(id) {
+  if (state.lines.length < 2) return;
+  const index = state.lines.findIndex((l) => l.id === id);
+  if (index === -1) return;
+  const line = state.lines[index];
+  if (getSelectedProduct(line) && !window.confirm(`Remove ${lineLabel(line)} from this quote?`)) return;
+  state.lines.splice(index, 1);
+  state.pricingDirty = true;
+  if (state.activeLineId === id) focusLine(state.lines[Math.max(0, index - 1)].id);
+  render();
 }
 
 function toggleProductCat(cat) {
@@ -1552,14 +1701,10 @@ function setAddonSearchQuery(value) {
   addonSearchDebounceHandle = setTimeout(renderPicker, SEARCH_DEBOUNCE_MS);
 }
 
-// Quote subtotal (product + add-ons, before tax and discount), the base the
-// discount is measured against.
+// Quote subtotal (every line's product + add-ons, before tax and discount),
+// the base the discount is measured against.
 function getQuoteSubtotal() {
-  const product = getSelectedProduct();
-  return roundToCent(
-    (product ? Number(product.unit_price || 0) : 0) +
-      getSelectedAddons().reduce((s, a) => s + Number(a.unit_price || 0) * getAddonQuantity(a), 0),
-  );
+  return roundToCent(quoteFigures(0).subtotal);
 }
 
 // Switching between $ and % converts the value already in the box so the
@@ -1698,54 +1843,59 @@ function roundToCent(n) {
 }
 
 async function handlePushToHubspot() {
-  const selectedProduct = getSelectedProduct();
-  if (!selectedProduct) return;
+  // Same gate as the disabled push button: every line needs a product.
+  if (!state.lines.every((l) => getSelectedProduct(l))) return;
   // Same gate as the disabled push button: never push a deal-backed quote with
   // an incomplete install address.
   if (state.selectedDeal && !isShipToComplete()) {
     render();
     return;
   }
-  const selectedAddons = getSelectedAddons();
 
   const taxRate = getTaxRate(state.shipTo.city, state.shipTo.zip);
-  const productCost = selectedProduct.unit_cost || 0;
-  const product = {
-    name: selectedProduct.name,
-    description: selectedProduct.customerDescription,
-    sku: selectedProduct.sku,
-    hs_product: selectedProduct.hsProduct,
-    price: selectedProduct.unit_price,
-    cost: productCost,
-    tax_amount: roundToCent(productCost * taxRate),
-    max_discount: selectedProduct.maxDiscount || 0,
-  };
-
-  const options = selectedAddons.map((a) => {
-    const quantity = getAddonQuantity(a);
-    const unitPrice = a.unit_price || 0;
-    const totalPrice = unitPrice * quantity;
-    const cost = (a.unit_cost || 0) * quantity;
+  // One entry per stairlift, in line order, each carrying its own options.
+  const products = state.lines.map((line) => {
+    const selectedProduct = getSelectedProduct(line);
+    const productCost = selectedProduct.unit_cost || 0;
+    const options = getSelectedAddons(line).map((a) => {
+      const quantity = getAddonQuantity(a, line);
+      const unitPrice = a.unit_price || 0;
+      const totalPrice = unitPrice * quantity;
+      const cost = (a.unit_cost || 0) * quantity;
+      return {
+        name: a.name,
+        description: a.customerDescription,
+        sku: a.sku,
+        quantity,
+        configuration: getAddonConfiguration(a, line) || "",
+        // update-hs applies quantity itself on the HubSpot side, so this is the
+        // per-unit price, not price * quantity (unlike cost/tax_amount below)
+        price: unitPrice,
+        cost,
+        tax_amount: roundToCent(totalPrice * taxRate),
+        // per-unit max discount * quantity, same as cost/tax_amount
+        max_discount: (a.maxDiscount || 0) * quantity,
+      };
+    });
     return {
-      name: a.name,
-      description: a.customerDescription,
-      sku: a.sku,
-      quantity,
-      configuration: getAddonConfiguration(a) || "",
-      // update-hs applies quantity itself on the HubSpot side, so this is the
-      // per-unit price, not price * quantity (unlike cost/tax_amount below)
-      price: unitPrice,
-      cost,
-      tax_amount: roundToCent(totalPrice * taxRate),
-      // per-unit max discount * quantity, same as cost/tax_amount
-      max_discount: (a.maxDiscount || 0) * quantity,
+      name: selectedProduct.name,
+      description: selectedProduct.customerDescription,
+      sku: selectedProduct.sku,
+      hs_product: selectedProduct.hsProduct,
+      price: selectedProduct.unit_price,
+      cost: productCost,
+      tax_amount: roundToCent(productCost * taxRate),
+      max_discount: selectedProduct.maxDiscount || 0,
+      options,
     };
   });
 
-  const subtotal =
-    product.price + selectedAddons.reduce((s, a) => s + (a.unit_price || 0) * getAddonQuantity(a), 0);
-  const cost = product.cost + options.reduce((s, o) => s + o.cost, 0);
-  const taxAmount = roundToCent(product.tax_amount + options.reduce((s, o) => s + o.tax_amount, 0));
+  // Quote-wide totals: each product plus its options' (already quantity-
+  // multiplied) figures, summed across every line.
+  const sumLines = (fn) => products.reduce((s, p) => s + fn(p) + p.options.reduce((t, o) => t + fn(o, true), 0), 0);
+  const subtotal = sumLines((item, isOption) => (isOption ? item.price * item.quantity : item.price));
+  const cost = sumLines((item) => item.cost);
+  const taxAmount = roundToCent(sumLines((item) => item.tax_amount));
   const rawDiscount = Number(state.discountValue || 0);
   const discountAmount =
     state.discountType === "$"
@@ -1756,7 +1906,7 @@ async function handlePushToHubspot() {
   const total = totalBeforeTax + taxAmount;
   const margin = totalBeforeTax !== 0 ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100 : 0;
   // same sum the summary's MD<sum> code shows
-  const maxDiscount = product.max_discount + options.reduce((s, o) => s + o.max_discount, 0);
+  const maxDiscount = sumLines((item) => item.max_discount);
 
   state.quoteLoading = true;
   state.quoteLink = null;
@@ -1775,8 +1925,7 @@ async function handlePushToHubspot() {
         rep_first_name: splitFullName(state.userName).firstName || null,
         rep_last_name: splitFullName(state.userName).lastName || null,
         rep_email: state.userEmail || null,
-        product,
-        options,
+        products,
         subtotal,
         cost,
         margin,
@@ -1833,8 +1982,8 @@ function buildQuoteEmailBodyHtml() {
 }
 
 function buildQuoteEmailSubject() {
-  const product = getSelectedProduct();
-  return `Quote for ${product ? product.name : ""}`;
+  const names = linesWithProduct().map((l) => getSelectedProduct(l).name);
+  return `Quote for ${names.join(", ")}`;
 }
 
 // Splits on comma or whitespace as the visitor types, turning every
@@ -2173,7 +2322,7 @@ function searchInputHtml({ id, action, value, placeholder, disabled }) {
 }
 
 function productSectionHtml() {
-  const selectedProduct = getSelectedProduct();
+  const brand = lockedBrand();
   const query = normalizeForSearch(state.productSearchQuery);
   const queryWords = query ? query.split(" ") : [];
   const searchedProducts = queryWords.length
@@ -2194,8 +2343,9 @@ function productSectionHtml() {
                 title: p.name,
                 description: p.description,
                 price: p.unit_price,
-                selected: state.productSku === p.sku,
-                disabled: false,
+                selected: getActiveLine().productSku === p.sku,
+                // every stairlift on a quote has to be the same brand
+                disabled: Boolean(brand) && brandOf(p.sku) !== brand,
                 action: "select-product",
               }),
             )
@@ -2220,7 +2370,14 @@ function productSectionHtml() {
     <section class="panel">
       <div class="panel__header">
         <h2 class="section-title">Product</h2>
-        <p class="section-subtitle">Select one product to begin. Prices shown include install & shipping but exclude tax.</p>
+        <p class="section-subtitle">${
+          state.lines.length > 1 ? `Choose the product for ${escapeHtml(lineLabel(getActiveLine()))}.` : "Select one product to begin."
+        } Prices shown include install & shipping but exclude tax.</p>
+        ${
+          brand
+            ? `<p class="section-subtitle">Other stairlifts on this quote lock it to ${escapeHtml(brandDisplayName(brand))} products.</p>`
+            : ""
+        }
         ${searchInputHtml({
           id: "product-search-input",
           action: "set-product-search",
@@ -2260,7 +2417,7 @@ function addonSectionHtml() {
         const isOpen = query ? true : state.openAddonCat === cat;
         const cardsHtml = items
           .map((a) => {
-            const isChecked = state.addonSkus.has(a.sku);
+            const isChecked = getActiveLine().addonSkus.has(a.sku);
             const isDisabled = !isChecked && incompatibleSkuSet.has(a.sku);
             const hasExtras = isChecked && (a.configurations.length > 1 || a.maxQuantity > 1);
             return checkboxCardHtml({
@@ -2475,23 +2632,75 @@ function quoteDetailsHtml() {
   `;
 }
 
-function summarySectionHtml() {
-  const selectedProduct = getSelectedProduct();
-  const selectedAddons = getSelectedAddons();
+// One row per stairlift ("Stairlift 1", "Stairlift 2", ...) above the line
+// items: clicking one points the product/add-on panels at it, the x removes it
+// (only once there's more than one), and + opens the clone/new chooser
+// (addLineModalHtml). + stays disabled while any line still has no product, so
+// empty lines can't pile up.
+function lineTabsHtml() {
+  const emptyLine = state.lines.find((l) => !getSelectedProduct(l));
+  const canRemove = state.lines.length > 1;
+  const tabsHtml = state.lines
+    .map((line) => {
+      const isActive = line.id === state.activeLineId;
+      return `
+      <div class="${classNames("line-tab", isActive && "line-tab--active")}">
+        <button type="button" data-action="select-line" data-line-id="${line.id}" class="line-tab__select"
+          ${isActive ? `aria-current="true"` : ""}>${escapeHtml(lineLabel(line))}</button>
+        ${
+          canRemove
+            ? `<button type="button" data-action="remove-line" data-line-id="${line.id}" class="line-tab__remove"
+                aria-label="Remove ${escapeHtml(lineLabel(line))}">&times;</button>`
+            : ""
+        }
+      </div>`;
+    })
+    .join("");
+  return `
+    <div class="line-tabs">
+      ${tabsHtml}
+      <button type="button" data-action="open-add-line" class="line-tab line-tab--add"
+        ${emptyLine ? `disabled title="Choose a product for ${escapeHtml(lineLabel(emptyLine))} first"` : `title="Add another stairlift"`}
+        aria-label="Add another stairlift">+</button>
+    </div>
+  `;
+}
 
-  const lineItems = [
-    ...(selectedProduct
-      ? [{
-          name: selectedProduct.name,
-          description: selectedProduct.description,
-          price: selectedProduct.unit_price,
-          cost: selectedProduct.unit_cost,
-          sku: selectedProduct.sku,
-        }]
-      : []),
-    ...selectedAddons.map((a) => {
-      const qty = getAddonQuantity(a);
-      const config = getAddonConfiguration(a);
+// The chooser + opens: copy the stairlift being edited, or start a blank one.
+function addLineModalHtml() {
+  if (!state.addLineModalOpen) return "";
+  const active = getActiveLine();
+  return `
+    <div class="add-line-modal" data-action="close-add-line-backdrop">
+      <div class="add-line-modal__panel" role="dialog" aria-modal="true" aria-labelledby="add-line-modal-title">
+        <h3 class="section-title" id="add-line-modal-title">Add another stairlift</h3>
+        <div class="add-line-modal__actions">
+          <button type="button" data-action="add-line" data-clone="true" class="btn btn--primary btn--block">
+            Clone ${escapeHtml(lineLabel(active))}
+          </button>
+          <button type="button" data-action="add-line" class="btn btn--muted btn--block">Add a new one</button>
+          <button type="button" data-action="close-add-line" class="btn btn--muted btn--block">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// One line's product row plus its add-on rows, the shape rowsHtml renders.
+function lineItemsFor(line) {
+  const product = getSelectedProduct(line);
+  if (!product) return [];
+  return [
+    {
+      name: product.name,
+      description: product.description,
+      price: product.unit_price,
+      cost: product.unit_cost,
+      sku: product.sku,
+    },
+    ...getSelectedAddons(line).map((a) => {
+      const qty = getAddonQuantity(a, line);
+      const config = getAddonConfiguration(a, line);
       return {
         name: a.name,
         description: config ? `Configuration: ${config}` : "",
@@ -2503,17 +2712,19 @@ function summarySectionHtml() {
       };
     }),
   ];
+}
 
-  const subtotal = lineItems.reduce((s, item) => s + Number(item.price || 0), 0);
-  const cost = lineItems.reduce((s, item) => s + Number(item.cost || 0), 0);
+function summarySectionHtml() {
+  const multiLine = state.lines.length > 1;
+  const groups = state.lines.map((line) => ({ line, items: lineItemsFor(line) }));
+  const hasAnyProduct = groups.some((g) => g.items.length > 0);
+  const emptyLine = state.lines.find((l) => !getSelectedProduct(l));
+
   // Shows which city/zip the tax rate matched next to the rate itself (see the
   // summary__margin-group markup below).
   const taxMatch = resolveTaxRate(state.shipTo.city, state.shipTo.zip);
   const taxRate = taxMatch.rate;
-  const productCost = selectedProduct ? Number(selectedProduct.unit_cost || 0) : 0;
-  const tax =
-    productCost * taxRate +
-    selectedAddons.reduce((s, a) => s + Number(a.unit_price || 0) * getAddonQuantity(a) * taxRate, 0);
+  const { subtotal, cost, tax, maxDiscount } = quoteFigures(taxRate);
   const rawDiscount = Number(state.discountValue || 0);
   const discountAmount =
     state.discountType === "$"
@@ -2522,27 +2733,11 @@ function summarySectionHtml() {
   const totalBeforeTax = subtotal - discountAmount;
   const total = totalBeforeTax + tax;
   const marginPct = totalBeforeTax !== 0 ? ((subtotal - cost - discountAmount) / totalBeforeTax) * 100 : 0;
-  const maxDiscount =
-    (selectedProduct ? selectedProduct.maxDiscount || 0 : 0) +
-    selectedAddons.reduce((s, a) => s + (a.maxDiscount || 0) * getAddonQuantity(a), 0);
 
   const marginHeld = state.marginHeld;
   const showCostColumn = marginHeld && SHOW_COST_COLUMN;
 
-  const rowsHtml =
-    lineItems.length === 0
-      ? `<p class="muted-text">No items selected yet.</p>`
-      : `
-    <div class="line-items">
-      <div class="line-items__head">
-        <div class="line-items__col">Item</div>
-        ${showCostColumn ? `<div class="line-items__col--amount">Cost</div>` : ""}
-        <div class="line-items__col--amount">Price</div>
-      </div>
-      <div class="line-items__body">
-        ${lineItems
-          .map(
-            (item) => `
+  const itemRowHtml = (item) => `
           <div class="${classNames("line-item", item.addon && "line-item--addon")}">
             <div class="line-item__body">
               <div class="line-item__name">${escapeHtml(item.name)}${item.qty > 1 ? ` <span class="line-item__qty">× ${item.qty}</span>` : ""}</div>
@@ -2553,9 +2748,36 @@ function summarySectionHtml() {
               <div class="line-item__price">${currencyWhole.format(Number(item.price || 0))}</div>
             </div>
           </div>
-        `,
-          )
-          .join("")}
+        `;
+
+  // With one stairlift the rows read exactly as they always have; with more,
+  // each line's rows sit under its own label, the one being edited highlighted.
+  const bodyHtml = multiLine
+    ? groups
+        .map(
+          ({ line, items }) => `
+        <div class="${classNames("line-group", line.id === state.activeLineId && "line-group--active")}">
+          <button type="button" data-action="select-line" data-line-id="${line.id}" class="line-group__label">
+            ${escapeHtml(lineLabel(line))}
+          </button>
+          ${items.length ? items.map(itemRowHtml).join("") : `<p class="muted-text">No product selected yet.</p>`}
+        </div>`,
+        )
+        .join("")
+    : groups[0].items.map(itemRowHtml).join("");
+
+  const rowsHtml =
+    !hasAnyProduct && !multiLine
+      ? `<p class="muted-text">No items selected yet.</p>`
+      : `
+    <div class="line-items">
+      <div class="line-items__head">
+        <div class="line-items__col">Item</div>
+        ${showCostColumn ? `<div class="line-items__col--amount">Cost</div>` : ""}
+        <div class="line-items__col--amount">Price</div>
+      </div>
+      <div class="line-items__body">
+        ${bodyHtml}
       </div>
     </div>
   `;
@@ -2577,7 +2799,7 @@ function summarySectionHtml() {
   const pushHubspotDisabled =
     !state.isOnline ||
     !state.selectedDeal ||
-    !selectedProduct ||
+    Boolean(emptyLine) ||
     shipToIncomplete ||
     overMaxDiscount ||
     state.quoteLoading ||
@@ -2586,8 +2808,8 @@ function summarySectionHtml() {
     ? "No internet connection"
     : !state.selectedDeal
       ? "Select a deal first"
-      : !selectedProduct
-        ? "Select a product first"
+      : emptyLine
+        ? `Choose a product for ${lineLabel(emptyLine)}${multiLine ? " or remove it" : ""} first`
         : shipToIncomplete
           ? "Complete the install address first"
           : overMaxDiscount
@@ -2641,6 +2863,7 @@ function summarySectionHtml() {
       </div>
       <p class="confidential-notice">Confidential. Pricing shown below is for internal/authorized use only, not for external distribution.</p>
 
+      ${lineTabsHtml()}
       ${rowsHtml}
 
       <div class="totals">
@@ -2711,11 +2934,12 @@ function summarySectionHtml() {
             : ""
         }
       </div>
+      ${addLineModalHtml()}
     </div>
   `;
 }
 
-// Always shown under the totals, from the summed max_discount of the selected
+// Always shown under the totals, from the summed max_discount of every line's
 // product and add-ons (each add-on's times its quantity). With no discount
 // applied it's "MD<max>"; once one is, it's "RD<max - discount>", the discount
 // the rep has left, turning red when that goes negative. Deliberately cryptic:
@@ -3290,6 +3514,25 @@ document.addEventListener("click", (e) => {
     case "dec-addon-qty":
       if (!el.hasAttribute("disabled")) decAddonQuantity(el.dataset.sku);
       break;
+    case "select-line":
+      selectLine(Number(el.dataset.lineId));
+      break;
+    case "remove-line":
+      removeLine(Number(el.dataset.lineId));
+      break;
+    case "open-add-line":
+      if (!el.hasAttribute("disabled")) openAddLineModal();
+      break;
+    case "add-line":
+      addLine(el.dataset.clone === "true");
+      break;
+    case "close-add-line":
+      closeAddLineModal();
+      break;
+    case "close-add-line-backdrop":
+      // same as close-send-quote-backdrop: only a click on the backdrop itself
+      if (e.target === el) closeAddLineModal();
+      break;
     case "set-discount-type":
       setDiscountType(el.dataset.type);
       break;
@@ -3438,6 +3681,9 @@ document.addEventListener("focusout", (e) => {
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.quoteEmailModalOpen) {
     closeSendQuoteModal();
+  }
+  if (e.key === "Escape" && state.addLineModalOpen) {
+    closeAddLineModal();
   }
   if (e.key === "Escape" && state.userMenuOpen) {
     state.userMenuOpen = false;

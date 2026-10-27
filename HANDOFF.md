@@ -4,7 +4,7 @@ Ignore the .archive folder altogether.
 
 ## What this is
 
-Camo CPQ is a small configure-price-quote tool. A user picks one product and any compatible add-ons, sees a live price/tax/discount/margin summary, and can push the resulting quote to HubSpot. It is a static, no-build, vanilla JavaScript single-page app, there is no backend server or database.
+Camo CPQ is a small configure-price-quote tool. A user picks one or more products (stairlifts, all the same brand), each with its own compatible add-ons, sees a live price/tax/discount/margin summary, and can push the resulting quote to HubSpot. It is a static, no-build, vanilla JavaScript single-page app, there is no backend server or database.
 
 ## How the app works, end to end
 
@@ -15,7 +15,7 @@ Camo CPQ is a small configure-price-quote tool. A user picks one product and any
 5. The summary panel computes subtotal, tax (the city/zip-based tax rate, see below, applied to the product's cost, plus that same rate applied to each add-on's price, not its cost), discount ($ or %), and total in real time. A "Show Pricebook" toggle (renamed from "Show Margin" 2026-10-27 by request; internally still `state.marginHeld` / `toggle-margin`) reveals a header line reading "Pricebook: <name> | Tax Rate: <location> → <rate>" plus the Pricebook dropdown in Quote Details. The "Margin: X%" readout that used to lead that header line is still in the code but hidden behind `SHOW_MARGIN_PCT = false` in `app.js`; flip it to `true` to restore it. The margin no longer turns orange at any threshold. Instead, products and options each carry a `max_discount` column (dollars; options are per unit, multiplied by quantity). A small monospace code built from the sum of those for the current selection always shows under the totals box (`maxDiscountCodeHtml()` in `app.js`), rounded to whole dollars: with no discount applied it's `MD<max>` (e.g. `MD450`, orange); once a discount is applied it switches to `RD<max minus discount>`, the discount the rep has remaining (e.g. `RD150`, orange), and when that goes negative it turns red (`RD-50`, the `totals__code--over` class, using `--color-red-600` added to `globals/global.css`). While it's red, "Push to HubSpot" is disabled (grayed out, tooltip "Discount is over the allowed maximum"), added 2026-10-27 by request; see `overMaxDiscount` in `summarySectionHtml()`. Changed 2026-10-12 by request; it used to appear only as `MD<max>` once the discount exceeded the max. It's meant to look like a stray code to a customer but tell the rep how much discount room they have. A blank `max_discount` cell counts as `0`, so an item with no max discount shows `MD0`, and any discount on it shows a red negative `RD`. The cell is read by `readMaxDiscount()`, which accepts currency-formatted values (`$1,200.00`) and header variants (`Max Discount`), since a plain `Number()` silently turned those into `0` and dropped the item out of the sum. This was a real bug, not a hypothetical: the options sheet sends `max_discount` currency-formatted, so before `readMaxDiscount()` every option's max discount counted as `0` and the `MD` code only reflected the product's (fixed and confirmed working 2026-10-06). The pricing cache key was bumped to `cpq-pricing-cache-v4` so cached rows without `max_discount` aren't served.
 6. "Push to HubSpot" POSTs the quote to a separate n8n webhook (`https://n8n.californiamobility.com/webhook/camo-cpq/update-hs`), which updates the selected deal and its line items, voids any previous quotes on that deal, and creates a new quote, returning `quote_link` and `deal_link` URLs, which then render as buttons. This call is unauthenticated, it does not require the Google sign-in. An info icon next to "Push to HubSpot" (`pushHubspotInfoHtml` in `app.js`) surfaces this update/void/create-new behavior to the user before they click it.
 
-   The POST body (`handlePushToHubspot()` in `app.js`):
+   The POST body (`handlePushToHubspot()` in `app.js`). **Changed 2026-10-27 for multiple stairlifts per quote:** the old top-level `product` object and `options` array are gone, replaced by `products[]`, one entry per stairlift in the order shown in the Quote Summary, each carrying its own `options[]`. This is a breaking change to the `update-hs` contract, the n8n workflow has to be updated to loop over `products[]` (and each one's `options[]`) when it builds line items; until it is, pushes won't land correctly. Everything below that talks about `product` and `options[]` now applies per `products[]` entry; the top-level `subtotal`/`cost`/`margin`/`discount_*`/`max_discount`/`tax_amount`/`total` are sums across every stairlift, and the discount is still one quote-level discount.
    ```json
    {
      "hs_deal_id": "330227396341",
@@ -24,12 +24,14 @@ Camo CPQ is a small configure-price-quote tool. A user picks one product and any
      "rep_first_name": "Chris",
      "rep_last_name": "Becher",
      "rep_email": "chris.becher@profitpad.com",
-     "product": {
-       "name": "...", "description": "...", "sku": "...",
-       "price": 0, "cost": 0, "tax_amount": 0, "max_discount": 0
-     },
-     "options": [
-       { "name": "...", "description": "...", "sku": "...", "quantity": 1, "configuration": "...", "price": 0, "cost": 0, "tax_amount": 0, "max_discount": 0 }
+     "products": [
+       {
+         "name": "...", "description": "...", "sku": "...", "hs_product": "...",
+         "price": 0, "cost": 0, "tax_amount": 0, "max_discount": 0,
+         "options": [
+           { "name": "...", "description": "...", "sku": "...", "quantity": 1, "configuration": "...", "price": 0, "cost": 0, "tax_amount": 0, "max_discount": 0 }
+         ]
+       }
      ],
      "subtotal": 0,
      "cost": 0,
@@ -63,6 +65,17 @@ Camo CPQ is a small configure-price-quote tool. A user picks one product and any
    `comment` is a freeform note the rep types directly on the quote (`state.quoteComment`, a new "Comment" field in the Quote Summary panel), separate from the note on the "Send Quote" email modal (`state.quoteEmailNote`, unchanged, still only used in the email body, never sent here). `quote_expiration_date` is `yyyy-mm-dd`, defaulting to 30 days from today (`defaultQuoteExpirationDate()` in `app.js`) but editable per quote via the calendar dropdown described below; it's just a value passed through, `app.js` does nothing else with it. `ship_to` is the editable shipping address described below; `hs_contact_id` is `null` whenever no HubSpot contact is selected (no deal, or the deal has no contacts), in which case the address fields are sent as-is (freeform, quote-only) and n8n shouldn't attempt to write them back onto any contact.
 
    The expiration date field itself (`#quote-expiration-date`) isn't a native `<input type="date">` — that calendar dropdown is unstyleable browser/OS chrome, and the ask was an on-brand look, so it's a plain `readonly` text input driven by Flatpickr instead (`renderExpirationDatePicker()` in `app.js`, on-brand overrides in `styles.css` under the `flatpickr-*` selectors). Same reasoning as the Google Sign-In button (`renderGoogleButton()`): since `render()` fully replaces `#app`'s innerHTML on every state change, the old Flatpickr instance would be left pointing at a detached DOM node, so it's torn down and a fresh one attached after every re-render instead. `onChange` calls `setQuoteExpirationDate()` with Flatpickr's own `dateFormat: "Y-m-d"` output, matching `state.quoteExpirationDate`'s format exactly.
+
+## Multiple stairlifts per quote
+
+Added 2026-10-27. A quote holds a list of lines (`state.lines`), one per stairlift, each `{ id, productSku, addonSkus, addonConfig, addonQty }` (`newLine()` in `app.js`). `id` is an instance id, not a sku, so the same product can be on a quote twice. `state.activeLineId` is the line the Product and Add-ons panels are editing; `getSelectedProduct()`/`getSelectedAddons()`/`getAddonQuantity()`/`getAddonConfiguration()` default to that line and take an optional `line` argument for code that reads every line (the summary, `quoteFigures()`, the push).
+
+- **Quote Summary tabs** (`lineTabsHtml()`): "Stairlift 1", "Stairlift 2", ... (numbered by position, so they renumber when one is removed). Clicking a tab (or a line's label in the line items) switches the panels to it, resetting the search boxes and open categories. An × removes a line once there are 2+ (with a confirm when it has a product). The + button opens a small chooser (`addLineModalHtml()`): clone the stairlift being edited (product, add-ons, configurations, quantities) or add a blank one. + is disabled while any line still has no product.
+- **Line items**: with one stairlift the summary looks exactly as before; with 2+, each line's rows sit under its own label, with the one being edited outlined.
+- **Brand rule**: every product on a quote has to share the same brand, the part of the sku before the first `--` (`brandOf()`), so Bruno and Access never mix. It's generic, any prefix works the same way. Once another line has a product, other-brand product cards are disabled (`lockedBrand()`), and `selectProduct()` guards the same rule. A single-line quote can still switch brands freely.
+- **Totals**: subtotal, cost, tax, margin, and the `MD`/`RD` max discount are summed across every line (`quoteFigures()`); there is one quote-level discount.
+- **Push**: disabled while any line has no product (pick one or remove the line). See the `products[]` body above.
+- **Resets**: picking a deal (`chooseDeal()`) and signing out go back to one empty line; a deal's package fills line 1 only. `skipToPriceLookup()` doesn't reset lines, same as it never reset the old single selection.
 
 ## The deal/product selection step
 

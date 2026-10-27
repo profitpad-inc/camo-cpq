@@ -1023,6 +1023,115 @@ select.input {
   background: var(--color-brand);
 }
 
+/* --- stairlift lines (one tab per product on the quote) --- */
+
+.line-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.line-tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 9999px;
+  background: var(--color-white);
+  color: var(--color-gray-600);
+  font-size: 0.75rem;
+  font-weight: 500;
+  overflow: hidden;
+}
+
+.line-tab--active {
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+  color: var(--color-white);
+}
+
+.line-tab__select {
+  padding: 0.375rem 0.75rem;
+  color: inherit;
+}
+
+.line-tab__remove {
+  padding: 0.375rem 0.625rem 0.375rem 0;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.line-tab__remove:hover {
+  opacity: 1;
+}
+
+.line-tab--add {
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.line-tab--add:hover:not(:disabled) {
+  background: var(--color-gray-50);
+}
+
+.line-tab--add:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.line-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+}
+
+.line-group--active {
+  border-color: var(--color-brand);
+}
+
+.line-group__label {
+  align-self: flex-start;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-gray-500);
+}
+
+.add-line-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgb(17 24 39 / 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.add-line-modal__panel {
+  width: 100%;
+  max-width: 22rem;
+  background: var(--color-white);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-md);
+  padding: 1.5rem;
+}
+
+.add-line-modal__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 /* --- quote details (comment / expiration / ship-to) --- */
 
 .subsection-title {
