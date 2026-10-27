@@ -1180,6 +1180,12 @@ select.input {
   opacity: 1;
 }
 
+.line-tab__remove-icon {
+  display: block;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
 .line-tab--add {
   justify-content: center;
   width: 1.875rem;

@@ -2640,8 +2640,8 @@ function quoteDetailsHtml() {
 }
 
 // One tab per stairlift ("Stairlift 1", "Stairlift 2", ...), on the left of
-// the Subtotal row: clicking one points the product/add-on panels at it, the x
-// removes it (only once there's more than one), and + toggles the clone/new popover right
+// the Subtotal row: clicking one points the product/add-on panels at it, the
+// trash icon on the active tab removes it (only once there's more than one), and + toggles the clone/new popover right
 // beside it (addLineMenuHtml). + stays disabled while any line still has no
 // product, so empty lines can't pile up.
 function lineTabsHtml() {
@@ -2655,9 +2655,13 @@ function lineTabsHtml() {
         <button type="button" data-action="select-line" data-line-id="${line.id}" class="line-tab__select"
           ${isActive ? `aria-current="true"` : ""}>${escapeHtml(lineLabel(line))}</button>
         ${
-          canRemove
+          canRemove && isActive
             ? `<button type="button" data-action="remove-line" data-line-id="${line.id}" class="line-tab__remove"
-                aria-label="Remove ${escapeHtml(lineLabel(line))}">&times;</button>`
+                aria-label="Remove ${escapeHtml(lineLabel(line))}">
+                <svg class="line-tab__remove-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+                </svg>
+              </button>`
             : ""
         }
       </div>`;
