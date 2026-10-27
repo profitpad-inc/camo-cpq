@@ -83,8 +83,13 @@ const HUBSPOT_DEAL_URL_BASE = "https://app-na2.hubspot.com/contacts/4185119/reco
 const GOOGLE_CLIENT_ID = "1062410601074-lkp9bo5oi2s893asvk0saa4bdsq4pshg.apps.googleusercontent.com";
 
 // Client asked to hide the per-line-item Cost column for now (margin % stays
-// visible under "Show Margin"); flip this back on if they want it restored.
+// visible under "Show Margin", since hidden too, see SHOW_MARGIN_PCT); flip this back on if they want it restored.
 const SHOW_COST_COLUMN = false;
+
+// Client asked to swap the "Margin: X%" readout in the summary header for the
+// active pricebook's name; flip this back on to show margin again (it sits
+// before the pricebook name when restored).
+const SHOW_MARGIN_PCT = false;
 
 // The pricing endpoint backs onto a Google Sheet and can't fetch all its
 // sheets in one request without serializing them server-side, so each sheet
@@ -670,7 +675,7 @@ function getTaxRate(city, zip) {
 // (lead_source rows only), and a `status`.
 //
 // Resolution order:
-//   1. A pricebook the rep picked from the dropdown beside "Show Margin"
+//   1. A pricebook the rep picked from the dropdown beside "Show Pricebook"
 //      (state.pricebookOverride), always wins until the deal changes.
 //   2. The selected contact's HubSpot `lead_source`, matched against each
 //      active lead_source row's `searches`. Case-insensitive and trimmed, since
@@ -973,7 +978,7 @@ const state = {
   // the pricebook column every unit_price currently reflects, re-resolved by
   // applyActivePricebook()
   activePricebook: BASE_PRICEBOOK,
-  // a pricebook column the rep picked from the dropdown beside "Show Margin";
+  // a pricebook column the rep picked from the dropdown beside "Show Pricebook";
   // null means "pick automatically" (lead source, then fallback). Cleared
   // whenever a different deal (or no deal) is chosen.
   pricebookOverride: null,
@@ -1636,7 +1641,7 @@ function setShipToField(field, value) {
   state.pricingDirty = true;
 }
 
-// The rep's pick from the Pricebook dropdown beside "Show Margin". It sticks
+// The rep's pick from the Pricebook dropdown beside "Show Pricebook". It sticks
 // for the rest of this deal's quote, even across contact switches, since the
 // rep chose it on purpose. A column switch changes the product/add-on card
 // prices too, not just the summary panel, so this needs a full render().
@@ -2424,7 +2429,7 @@ function taxLocationFieldsHtml() {
   `;
 }
 
-// Comment + expiration date + (with "Show Margin" on) the Pricebook dropdown,
+// Comment + expiration date + (with "Show Pricebook" on) the Pricebook dropdown,
 // plus the ship-to block. Expiration date and comment only render with a
 // selected deal, since there's no quote to attach them to on a
 // skip-straight-to-price-lookup quote; the Pricebook dropdown renders either
@@ -2610,7 +2615,13 @@ function summarySectionHtml() {
         ${
           marginHeld
             ? `<div class="summary__margin-group">
-                <span class="summary__margin">Margin: ${marginPct.toFixed(1)}%</span>
+                ${
+                  SHOW_MARGIN_PCT
+                    ? `<span class="summary__margin">Margin: ${marginPct.toFixed(1)}%</span>
+                       <span class="summary__margin-divider">|</span>`
+                    : ""
+                }
+                <span class="summary__margin">Pricebook: ${escapeHtml(pricebookDisplayName(state.activePricebook))}</span>
                 <span class="summary__margin-divider">|</span>
                 <span class="summary__margin">Tax Rate: ${escapeHtml(taxMatch.label)} → ${(taxRate * 100).toFixed(2)}%</span>
               </div>`
@@ -2680,7 +2691,7 @@ function summarySectionHtml() {
             ${pushButtonHtml}
           </div>
           <button type="button" data-action="toggle-margin" class="btn btn--muted btn--margin-toggle">
-            ${marginHeld ? "Hide Margin" : "Show Margin"}
+            ${marginHeld ? "Hide Pricebook" : "Show Pricebook"}
           </button>
         </div>
         ${
@@ -2709,7 +2720,7 @@ function maxDiscountCodeHtml(discountAmount, maxDiscount) {
 }
 
 // The Pricebook dropdown in the Quote Details column, below Comment, shown only
-// while "Show Margin" is on: every active pricebook the catalog carries, with
+// while "Show Pricebook" is on: every active pricebook the catalog carries, with
 // whichever one is currently pricing the quote selected (whether the rep
 // picked it or it was resolved automatically).
 function pricebookSelectHtml() {
