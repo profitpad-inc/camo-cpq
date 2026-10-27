@@ -219,34 +219,34 @@ The "Send Quote" modal's preview iframe (`quoteIframeContainerEl`) loads a cross
 
 ## File map
 
-Everything now lives under one `html/` root, served by a single static file server, not two separate subdomain hosts:
+Everything lives under one `docs/` root (the folder GitHub Pages publishes), served as a single static site:
 
 | File | Purpose |
 |---|---|
-| `html/index.html` | Thin client-side redirect (meta refresh) to `./sales.californiamobility.com/cpq` |
-| `html/sales.californiamobility.com/index.html` | Another redirect stub, to `./cpq` |
-| `html/sales.californiamobility.com/cpq/index.html` | Page shell, loads `app.js` and the Google Identity Services script, the actual app |
-| `html/sales.californiamobility.com/cpq/app.js` | Everything: Google sign-in, pricing fetch + normalization, rendering, the HubSpot push |
-| `html/sales.californiamobility.com/cpq/styles.css` | Hand-written CSS, app-specific, no build step, no framework |
-| `html/sales.californiamobility.com/cpq/vendor/flatpickr.min.js`, `flatpickr.min.css` | Vendored (not CDN-linked) copy of Flatpickr v4.6.13, MIT licensed, pinned/downloaded once rather than fetched at runtime so it still works offline like everything else here; drives the expiration date field's calendar dropdown, see below |
-| `html/sales.californiamobility.com/service-worker.js` | PWA offline caching; deliberately lives one directory *above* `cpq/`, not inside it, see "Service worker scope" below |
-| `html/sales.californiamobility.com/cpq/manifest.json` | PWA manifest (name, icons, standalone display) |
-| `html/sales.californiamobility.com/globals/global.css` | Shared brand tokens + reset, meant to be reused by other California Mobility webtools, not just this one (renamed from `static.californiamobility.com/`, since it's not actually a separate host). Lives under `sales.californiamobility.com/`, a sibling of `cpq/` and of `service-worker.js`, **not** at the `html/` root — this doc previously said `html/globals/`, that was stale relative to an earlier restructuring |
-| `html/sales.californiamobility.com/globals/index.html` | Same redirect stub pattern, to `../cpq`, still unclear why this folder needs one at all, worth a quick check with the team |
+| `docs/index.html` | Thin client-side redirect (meta refresh) to `./cpq` |
+| `docs/.nojekyll` | Tells GitHub Pages to serve the folder as-is, with no Jekyll processing |
+| `docs/cpq/index.html` | Page shell, loads `app.js` and the Google Identity Services script, the actual app |
+| `docs/cpq/app.js` | Everything: Google sign-in, pricing fetch + normalization, rendering, the HubSpot push |
+| `docs/cpq/styles.css` | Hand-written CSS, app-specific, no build step, no framework |
+| `docs/cpq/vendor/flatpickr.min.js`, `flatpickr.min.css` | Vendored (not CDN-linked) copy of Flatpickr v4.6.13, MIT licensed, pinned/downloaded once rather than fetched at runtime so it still works offline like everything else here; drives the expiration date field's calendar dropdown, see below |
+| `docs/service-worker.js` | PWA offline caching; deliberately lives one directory *above* `cpq/`, not inside it, see "Service worker scope" below |
+| `docs/cpq/manifest.json` | PWA manifest (name, icons, standalone display) |
+| `docs/globals/global.css` | Shared brand tokens + reset, meant to be reused by other California Mobility webtools, not just this one (renamed from `static.californiamobility.com/`, since it's not actually a separate host). A sibling of `cpq/` and of `service-worker.js` |
+| `docs/globals/index.html` | Same redirect stub pattern, to `../cpq`, still unclear why this folder needs one at all, worth a quick check with the team |
 
-The `sales.californiamobility.com` folder name is a holdover from when this was conceptually two subdomains; it's kept because the live host serves it at that path (`http://34.20.174.32/sales.californiamobility.com/cpq`, per the redirect targets), not because there's an actual subdomain behind it, it's all one server now.
+Until 2026-10-27 this tree lived at `html/sales.californiamobility.com/` (a holdover from when the app was served at `http://34.20.174.32/sales.californiamobility.com/cpq`). It was moved to `docs/` to deploy on GitHub Pages; every internal path is relative, so nothing inside the tree changed.
 
 ## Deployment
 
-This app deploys as a single static site rooted at `html/`. `sales.californiamobility.com/cpq/index.html` links `global.css` with a relative path (`../globals/global.css`, one level up from `cpq/` into the sibling `globals/` folder), and `service-worker.js` does the same from its own location one level further up (`./globals/global.css`, since from there `globals/` is a direct sibling, not one level up) — both resolve because `globals/` lives under `sales.californiamobility.com/` alongside `cpq/` and `service-worker.js`, not at the `html/` root. No nginx configs exist in this repo currently; if they exist, they're managed outside this codebase.
+This app deploys on GitHub Pages from the `docs/` folder of `main` in `profitpad-inc/camo-cpq` (Settings → Pages → Deploy from a branch → `main` / `/docs`). With no custom domain that's `https://profitpad-inc.github.io/camo-cpq/`, and the app itself is at `.../camo-cpq/cpq/`. `cpq/index.html` links `global.css` with a relative path (`../globals/global.css`), and `service-worker.js` does the same from its own location one level up (`./globals/global.css`), so the app works under any path prefix, including the `/camo-cpq/` project-site prefix. The Pages origin also needs to be an authorized JavaScript origin on the Google OAuth client (see "Google sign-in" below) and allowed by the n8n webhook's CORS settings, otherwise sign-in or the pricing fetch fails there.
 
 ## Service worker scope: why it lives outside `cpq/`
 
-`service-worker.js` lives at `html/sales.californiamobility.com/service-worker.js`, one directory above `cpq/`, not inside it. This matters for offline use of the no-trailing-slash URL, `https://sales.californiamobility.com/cpq` — which isn't a typo/edge case, it's the actual redirect target of `sales.californiamobility.com/index.html`'s meta-refresh (`url=./cpq`, see the file map above).
+`service-worker.js` lives at `docs/service-worker.js`, one directory above `cpq/`, not inside it. This matters for offline use of the no-trailing-slash URL, `.../cpq` — which isn't a typo/edge case, it's the actual redirect target of `docs/index.html`'s meta-refresh (`url=./cpq`, see the file map above).
 
 A service worker only intercepts requests whose URL starts with its scope string, and by default that scope is the directory containing the SW script itself. With the file at `cpq/service-worker.js`, the default scope is `.../cpq/` (trailing slash); `.../cpq` (no slash) doesn't start with that string, so a visit to the no-slash URL was never actually controlled by the service worker at all, no fetch handler in this file could ever run for it, no matter what that handler did. Online, that visit still "worked" because the browser could reach the network directly; offline, there was nothing installed to catch it, so it failed outright, while `.../cpq/` (with the slash) worked fine since that's the URL the service worker actually installs itself against on a normal first visit.
 
-Moving the file up one level makes its default scope `.../sales.californiamobility.com/`, which is a prefix of both `.../cpq` and `.../cpq/`, so both are covered. `PRECACHE_URLS` and the navigate-fallback path in `service-worker.js` were updated to the new `./cpq/...`-relative paths to match (they're relative to the *service worker's own* location, not the page's).
+Moving the file up one level makes its default scope the site root (`.../camo-cpq/` on GitHub Pages), which is a prefix of both `.../cpq` and `.../cpq/`, so both are covered. `PRECACHE_URLS` and the navigate-fallback path in `service-worker.js` were updated to the new `./cpq/...`-relative paths to match (they're relative to the *service worker's own* location, not the page's).
 
 The registration call itself (`navigator.serviceWorker.register(...)` in `app.js`, near the bottom) doesn't use a plain relative `"./service-worker.js"` string, for a related reason: a relative path resolves against *the current page's own URL*, so `"./service-worker.js"` from a document loaded at the no-slash `.../cpq` would actually resolve one level too high (to `.../service-worker.js`, wrong location) instead of `.../cpq/service-worker.js`, since `.../cpq` has no trailing slash to resolve "the current directory" against.
 
@@ -254,7 +254,7 @@ An earlier version of this worked around that by hardcoding the absolute path `/
 
 `CACHE_NAME` was bumped (`cpq-v2-cache-v5` → `cpq-v2-cache-v6`) alongside this move so returning visitors' browsers install the new precache list under the new scope rather than continuing to serve out of the old one.
 
-`service-worker.js`'s `PRECACHE_URLS` now points at `../../globals/global.css` (was the old absolute `https://static.californiamobility.com/global.css`, a host that no longer factors into this setup), matching the relative-path scheme used everywhere else under `html/`.
+`service-worker.js`'s `PRECACHE_URLS` now points at `../../globals/global.css` (was the old absolute `https://static.californiamobility.com/global.css`, a host that no longer factors into this setup), matching the relative-path scheme used everywhere else under `docs/`.
 
 ## Google sign-in
 
@@ -286,7 +286,7 @@ The last successfully-verified ID token is kept in `localStorage` (`cpq-google-l
    - User type: **External** (needed since the allowlist may include email addresses outside the org's own Workspace domain, e.g. dealers/manufacturers on personal Gmail).
    - Publishing status: if the allowlist is small (fewer than 100 people), leave it in **Testing** and add each allowed email as a "test user" there — this gives a free, Google-enforced second check on top of n8n's own allowlist. If it needs to scale past 100 or avoid the "unverified app" warning screen, it'll need to go through **Production**/verification instead, at which point the allowlist is enforced by n8n alone.
 3. **Credentials > Create Credentials > OAuth client ID**, type **Web application**.
-   - **Authorized JavaScript origins**: add every origin this app is actually served from, e.g. `http://localhost:4173` for local dev, plus whatever the production origin is (per the Deployment section above, currently `http://34.20.174.32`, or the real domain once one exists).
+   - **Authorized JavaScript origins**: add every origin this app is actually served from, e.g. `http://localhost:4173` for local dev, plus whatever the production origin is (per the Deployment section above, now the GitHub Pages origin `https://profitpad-inc.github.io`).
    - **Authorized redirect URIs**: none needed, the Google Identity Services button/One Tap flow used here doesn't redirect.
 4. The resulting **Client ID** (looks like `xxxxxxxxxxxx-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.apps.googleusercontent.com`). This is public, safe to commit, it identifies the app requesting sign-in, it's not a secret and grants nothing by itself. Drop it into `GOOGLE_CLIENT_ID` in `app.js` (currently a `REPLACE_ME` placeholder).
    - No client secret is needed anywhere for this flow, not in this repo and not in n8n; ID-token verification only needs the token itself plus this same Client ID (to check the `aud` claim matches) and Google's public signing keys, all fetchable without any credential.
@@ -393,11 +393,11 @@ Things that are easy to get wrong here, and did trip up earlier versions of this
 
 ## Local development
 
-`.claude/launch.json` defines a single `static-site` config (`python3 -m http.server 4173`, serving `html/`), matching how the production host serves everything from one root now. There is no build step, edit `app.js` directly and reload.
+`.claude/launch.json` defines a single `static-site` config (`python3 -m http.server 4173`, serving `docs/`), matching how GitHub Pages serves everything from one root. There is no build step, edit `app.js` directly and reload.
 
-The app itself is at `http://localhost:4173/sales.californiamobility.com/cpq/`, not the server root, opening `http://localhost:4173/` locally hits the redirect stub described above. Because the whole `html/` tree is now one server root both locally and in production, the relative `global.css` link resolves correctly in both places, there's no longer a local/production split to work around here.
+The app itself is at `http://localhost:4173/cpq/`, not the server root, opening `http://localhost:4173/` locally hits the redirect stub described above. Because the whole `docs/` tree is now one server root both locally and in production, the relative `global.css` link resolves correctly in both places, there's no longer a local/production split to work around here.
 
-Since the `python3 -m http.server` in `.claude/launch.json` binds all interfaces, not just `localhost`, a phone on the same wifi can reach it at `http://<this computer's LAN IP>:4173/sales.californiamobility.com/cpq/` too, useful for testing on a real device without deploying.
+Since the `python3 -m http.server` in `.claude/launch.json` binds all interfaces, not just `localhost`, a phone on the same wifi can reach it at `http://<this computer's LAN IP>:4173/cpq/` too, useful for testing on a real device without deploying.
 
 ### Skipping Google Sign-In locally
 

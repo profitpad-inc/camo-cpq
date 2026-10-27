@@ -1,12 +1,12 @@
 // v2/service-worker.js
 //
 // Lives one directory above cpq/ (not inside it) so its default scope is
-// "/sales.californiamobility.com/" instead of "/sales.californiamobility.com/cpq/".
+// the site root (e.g. "/camo-cpq/") instead of ".../cpq/".
 // A service worker only ever intercepts requests whose URL starts with its
 // scope string; "/cpq" (no trailing slash) does NOT start with "/cpq/", so a
 // SW scoped to "/cpq/" silently never sees — and can't offline-serve — a
 // visit to the no-slash URL, only "/cpq/" itself. Scoping one level higher
-// covers both, since both start with "/sales.californiamobility.com/". See
+// covers both, since both start with the site root. See
 // the registration call in cpq/app.js, which points here with an absolute
 // path for the same reason: a relative "./service-worker.js" resolves
 // differently depending on whether the *page's own* URL has a trailing
