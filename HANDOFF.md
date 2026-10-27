@@ -224,6 +224,7 @@ Everything lives under one `docs/` root (the folder GitHub Pages publishes), ser
 | File | Purpose |
 |---|---|
 | `docs/index.html` | Thin client-side redirect (meta refresh) to `./cpq` |
+| `docs/CNAME` | Custom domain for GitHub Pages (`sales.californiamobility.com`) |
 | `docs/.nojekyll` | Tells GitHub Pages to serve the folder as-is, with no Jekyll processing |
 | `docs/cpq/index.html` | Page shell, loads `app.js` and the Google Identity Services script, the actual app |
 | `docs/cpq/app.js` | Everything: Google sign-in, pricing fetch + normalization, rendering, the HubSpot push |
@@ -238,7 +239,7 @@ Until 2026-10-27 this tree lived at `html/sales.californiamobility.com/` (a hold
 
 ## Deployment
 
-This app deploys on GitHub Pages from the `docs/` folder of `main` in `profitpad-inc/camo-cpq` (Settings → Pages → Deploy from a branch → `main` / `/docs`). With no custom domain that's `https://profitpad-inc.github.io/camo-cpq/`, and the app itself is at `.../camo-cpq/cpq/`. `cpq/index.html` links `global.css` with a relative path (`../globals/global.css`), and `service-worker.js` does the same from its own location one level up (`./globals/global.css`), so the app works under any path prefix, including the `/camo-cpq/` project-site prefix. The Pages origin also needs to be an authorized JavaScript origin on the Google OAuth client (see "Google sign-in" below) and allowed by the n8n webhook's CORS settings, otherwise sign-in or the pricing fetch fails there.
+This app deploys on GitHub Pages from the `docs/` folder of `main` in `profitpad-inc/camo-cpq` (Settings → Pages → Deploy from a branch → `main` / `/docs`). `docs/CNAME` sets the custom domain `sales.californiamobility.com`, so the app is at `https://sales.californiamobility.com/cpq/` (without the CNAME it would be `https://profitpad-inc.github.io/camo-cpq/cpq/`). `cpq/index.html` links `global.css` with a relative path (`../globals/global.css`), and `service-worker.js` does the same from its own location one level up (`./globals/global.css`), so the app works at a domain root or under any path prefix, such as the `/camo-cpq/` project-site prefix GitHub Pages uses without a custom domain. The site's origin (`https://sales.californiamobility.com`) also needs to be an authorized JavaScript origin on the Google OAuth client (see "Google sign-in" below) and allowed by the n8n webhook's CORS settings, otherwise sign-in or the pricing fetch fails there.
 
 ## Service worker scope: why it lives outside `cpq/`
 
@@ -246,7 +247,7 @@ This app deploys on GitHub Pages from the `docs/` folder of `main` in `profitpad
 
 A service worker only intercepts requests whose URL starts with its scope string, and by default that scope is the directory containing the SW script itself. With the file at `cpq/service-worker.js`, the default scope is `.../cpq/` (trailing slash); `.../cpq` (no slash) doesn't start with that string, so a visit to the no-slash URL was never actually controlled by the service worker at all, no fetch handler in this file could ever run for it, no matter what that handler did. Online, that visit still "worked" because the browser could reach the network directly; offline, there was nothing installed to catch it, so it failed outright, while `.../cpq/` (with the slash) worked fine since that's the URL the service worker actually installs itself against on a normal first visit.
 
-Moving the file up one level makes its default scope the site root (`.../camo-cpq/` on GitHub Pages), which is a prefix of both `.../cpq` and `.../cpq/`, so both are covered. `PRECACHE_URLS` and the navigate-fallback path in `service-worker.js` were updated to the new `./cpq/...`-relative paths to match (they're relative to the *service worker's own* location, not the page's).
+Moving the file up one level makes its default scope the site root (`https://sales.californiamobility.com/`), which is a prefix of both `.../cpq` and `.../cpq/`, so both are covered. `PRECACHE_URLS` and the navigate-fallback path in `service-worker.js` were updated to the new `./cpq/...`-relative paths to match (they're relative to the *service worker's own* location, not the page's).
 
 The registration call itself (`navigator.serviceWorker.register(...)` in `app.js`, near the bottom) doesn't use a plain relative `"./service-worker.js"` string, for a related reason: a relative path resolves against *the current page's own URL*, so `"./service-worker.js"` from a document loaded at the no-slash `.../cpq` would actually resolve one level too high (to `.../service-worker.js`, wrong location) instead of `.../cpq/service-worker.js`, since `.../cpq` has no trailing slash to resolve "the current directory" against.
 
@@ -286,7 +287,7 @@ The last successfully-verified ID token is kept in `localStorage` (`cpq-google-l
    - User type: **External** (needed since the allowlist may include email addresses outside the org's own Workspace domain, e.g. dealers/manufacturers on personal Gmail).
    - Publishing status: if the allowlist is small (fewer than 100 people), leave it in **Testing** and add each allowed email as a "test user" there — this gives a free, Google-enforced second check on top of n8n's own allowlist. If it needs to scale past 100 or avoid the "unverified app" warning screen, it'll need to go through **Production**/verification instead, at which point the allowlist is enforced by n8n alone.
 3. **Credentials > Create Credentials > OAuth client ID**, type **Web application**.
-   - **Authorized JavaScript origins**: add every origin this app is actually served from, e.g. `http://localhost:4173` for local dev, plus whatever the production origin is (per the Deployment section above, now the GitHub Pages origin `https://profitpad-inc.github.io`).
+   - **Authorized JavaScript origins**: add every origin this app is actually served from, e.g. `http://localhost:4173` for local dev, plus whatever the production origin is (per the Deployment section above, now `https://sales.californiamobility.com`, served by GitHub Pages).
    - **Authorized redirect URIs**: none needed, the Google Identity Services button/One Tap flow used here doesn't redirect.
 4. The resulting **Client ID** (looks like `xxxxxxxxxxxx-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.apps.googleusercontent.com`). This is public, safe to commit, it identifies the app requesting sign-in, it's not a secret and grants nothing by itself. Drop it into `GOOGLE_CLIENT_ID` in `app.js` (currently a `REPLACE_ME` placeholder).
    - No client secret is needed anywhere for this flow, not in this repo and not in n8n; ID-token verification only needs the token itself plus this same Client ID (to check the `aud` claim matches) and Google's public signing keys, all fetchable without any credential.

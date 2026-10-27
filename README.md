@@ -4,7 +4,7 @@ A small configure-price-quote tool for California Mobility. A sales rep signs in
 
 It's a static, no-build, vanilla JavaScript single-page app. There's no backend server or database: pricing data and the HubSpot push go through n8n webhooks.
 
-**Live site:** https://profitpad-inc.github.io/camo-cpq/cpq/
+**Live site:** https://sales.californiamobility.com/cpq/
 
 ## Repository layout
 
@@ -31,9 +31,9 @@ To skip Google Sign-In during local development, copy `docs/cpq/dev-auth.local.j
 
 ## Deploying
 
-GitHub Pages serves `docs/` from the `main` branch, so pushing to `main` deploys. There's no build step.
+GitHub Pages serves `docs/` from the `main` branch at the custom domain in `docs/CNAME` (`sales.californiamobility.com`), so pushing to `main` deploys. There's no build step.
 
-The site's origin (`https://profitpad-inc.github.io`) must be allowed in two places for sign-in and pricing to work:
+The site's origin (`https://sales.californiamobility.com`) must be allowed in two places for sign-in and pricing to work:
 
 - the Google OAuth client's authorized JavaScript origins
 - the n8n webhook's CORS settings
